@@ -1,0 +1,32 @@
+Windows:
+    Settings/info:
+        ffmpeg info (version, build, location)
+        ffprobe info
+        detected gpu name
+        detected hevc encoders
+        preferred hevc encoder
+    Logs:
+        time, log level, file, line, message
+    Job queue:
+        progress bar for file (speed, time left)
+        progress bar for job (speed, time left)
+        status for each job (pending, running, done)
+        global estimated time left
+    File tabs:
+        tabs of jobs
+        list of files in job
+        each file has short summary (need reencode, size, duration, resolution, codec, tracks in short)
+        each file has detailed summary (need reencode, size, duration, resolution, codec, tracks)
+        Menu:
+            new job:
+                job name
+            add files:
+                checkbox "recursive"
+            batch audio filter:
+                checkbox "enable"
+                list of audio filters
+            batch subtitle filter:
+                checkbox "enable"
+                list of subtitle filters
+            batch reencode:
+                checkbox "enable"

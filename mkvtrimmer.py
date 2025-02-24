@@ -11,6 +11,8 @@ import logging
 
 from ffmpeg import find_ffmpeg, find_ffprobe, get_supported_hevc_encoders, \
     get_video_duration_seconds, get_video_tracks, VideoTrack
+from gui import run_gui
+from utils import get_gpu_name
 
 
 def setup_logging(args):
@@ -109,26 +111,7 @@ def main():
 
     setup_logging(args)
 
-    ffmpeg = find_ffmpeg()
-    if ffmpeg is None:
-        logging.error('ffmpeg is not found in PATH')
-        return
-    logging.info('ffmpeg: %s', ffmpeg)
-
-    ffprobe = find_ffprobe()
-    if ffprobe is None:
-        logging.error('ffprobe is not found in PATH')
-        return
-    logging.info('ffprobe: %s', ffprobe)
-
-    hevc_encoders = get_supported_hevc_encoders(ffmpeg)
-    if hevc_encoders is None:
-        logging.error('Failed to get HEVC encoders')
-        return
-    logging.info('HEVC encoders: %s', hevc_encoders)
-
-    file = MKVFile("\\\\192.168.3.68\\share\\ext\\TE\\The Matrix Resurrections (2021) BDRemux 1080p.mkv")
-    file.parse(ffprobe)
+    run_gui()
 
 if __name__ == '__main__':
     main()
