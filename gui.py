@@ -114,19 +114,19 @@ class FilterDialog(QtWidgets.QDialog):
         layout = QtWidgets.QVBoxLayout()
         self.setLayout(layout)
 
+        layout.addWidget(QtWidgets.QLabel('Filters are case-insensitive'))
+        layout.addWidget(QtWidgets.QLabel('Use * to match any value'))
+
         self.filter_list = QtWidgets.QListWidget()
         layout.addWidget(self.filter_list)
 
-        items_container = QtWidgets.QWidget()
-        items_layout = QtWidgets.QHBoxLayout()
-        items_container.setLayout(items_layout)
         add_button = QtWidgets.QPushButton('Add')
         add_button.clicked.connect(lambda: self.add_item())
-        items_layout.addWidget(add_button)
+        layout.addWidget(add_button)
+
         remove_button = QtWidgets.QPushButton('Remove')
         remove_button.clicked.connect(lambda: self.filter_list.takeItem(self.filter_list.currentRow()))
-        items_layout.addWidget(remove_button)
-        layout.addWidget(items_container)
+        layout.addWidget(remove_button)
 
         dialog_buttons = QtWidgets.QDialogButtonBox()
         dialog_buttons.setStandardButtons(QtWidgets.QDialogButtonBox.Cancel | QtWidgets.QDialogButtonBox.Ok)
@@ -322,7 +322,7 @@ class GUI(QtWidgets.QMainWindow):
 
         for mkvfile in self.files:
             if not mkvfile.remux(self.ffmpeg, self.preferred_preset, self.preferred_encoder, on_progress):
-                logging.error('Failed to process file %s', mkvfile.file)
+                logger.error('Failed to process file %s', mkvfile.file)
 
     def init_ui(self):
         self.setWindowTitle('MKV Trimmer')

@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-import os
-import shutil
-from typing import Callable
 
 #
 # @file mkv_file.py
@@ -11,7 +8,9 @@ from typing import Callable
 
 from ffmpeg import VideoTrack, get_video_tracks, FFMpegRemuxer
 import logging
-
+import os
+import shutil
+from typing import Callable
 from utils import unique_bak_name
 
 logger = logging.getLogger(__name__)
@@ -75,10 +74,10 @@ class MKVFile:
               preset: str,
               encoder: str,
               on_progress: Callable[[int, float], None]) -> bool:
-        logging.debug('Processing file: %s', self.file)
+        logger.debug('Processing file: %s', self.file)
 
         outfile = self.file + '.trimmed.mkv'
-        logging.debug('Output file: %s', outfile)
+        logger.debug('Output file: %s', outfile)
 
         ffmpeg = FFMpegRemuxer(ffmpeg, self.file)
         ffmpeg.audio_as_is()
@@ -87,28 +86,28 @@ class MKVFile:
         for track in self.tracks:
             if isinstance(track, VideoTrack):
                 if not track.is_h265():
-                    logging.debug('Converting video track %s to HEVC', track)
+                    logger.debug('Converting video track %s to HEVC', track)
                     ffmpeg.video_to_hevc(track, preset, encoder)
                 else:
-                    logging.debug('Keeping video track %s as is', track)
+                    logger.debug('Keeping video track %s as is', track)
                     ffmpeg.video_as_is(track)
             if track.keep:
                 ffmpeg.keep_track(track)
 
         if not ffmpeg.process(outfile, on_progress):
-            logging.error('Failed to process file %s', self.file)
+            logger.error('Failed to process file %s', self.file)
             os.remove(outfile)
             return False
 
-        logging.info('File %s processed successfully', self.file)
+        logger.info('File %s processed successfully', self.file)
 
         # Backup original file
         bak = unique_bak_name(self.file)
-        logging.info('Backing up original file to %s', bak)
+        logger.info('Backing up original file to %s', bak)
         shutil.move(self.file, bak)
 
         # Replace original file with the trimmed one
-        logging.info('Replacing original file with the trimmed one')
+        logger.info('Replacing original file with the trimmed one')
         shutil.move(outfile, self.file)
         return True
 

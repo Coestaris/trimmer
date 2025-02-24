@@ -19,6 +19,8 @@ FFMPEG_DURATION_RE = re.compile(r'(?P<hours>\d+):(?P<minutes>\d+):(?P<seconds>\d
 # 24000/1001
 FFMPEG_FRAME_RATE_RE = re.compile(r'(?P<dividend>\d+)/(?P<divisor>\d+)')
 
+logger = logging.getLogger(__name__)
+
 def find_ffmpeg() -> Optional[str]:
     import shutil
     return shutil.which('ffmpeg')
@@ -32,7 +34,7 @@ def get_supported_hevc_encoders(ffmpeg: str) -> Optional[List[str]]:
 
     code, result = run(args)
     if code != 0:
-        logging.error('Failed to get encoders: %s', result)
+        logger.error('Failed to get encoders: %s', result)
         return None
 
     encoders = []
@@ -46,7 +48,7 @@ def get_video_duration_seconds(ffprobe: str, file: str) -> Optional[float]:
          '-of', 'default=noprint_wrappers=1:nokey=1', file]
     code, result = run(args)
     if code != 0:
-        logging.error('Failed to get video duration: %s', result)
+        logger.error('Failed to get video duration: %s', result)
         return None
 
     return float(result)
@@ -63,14 +65,14 @@ def get_video_duration_frames(ffprobe: str, file: str) -> Optional[int]:
         "-of", "csv=p=0", file]
     code, output = run(args)
     if code != 0:
-        logging.error('Failed to get frame rate: %s', output)
+        logger.error('Failed to get frame rate: %s', output)
         return None
 
     # Let's not use 'eval' here...
     frame_rate = output.split('/')
     frame_rate = int(frame_rate[0]) / int(frame_rate[1])
 
-    logging.debug('Frame rate: %f, duration: %f', frame_rate, duration_sec)
+    logger.debug('Frame rate: %f, duration: %f', frame_rate, duration_sec)
     return int(frame_rate * duration_sec)
 
 class FFMpegTrack:
@@ -118,7 +120,7 @@ def get_video_tracks(ffprobe: str, file: str) -> Optional[List['FFMpegTrack']]:
     def duration_to_secs(duration: str) -> float:
         match = FFMPEG_DURATION_RE.match(duration)
         if match is None:
-            logging.warning(
+            logger.warning(
                 'Invalid duration: %s while processing %s (stream type %s)',
                 duration, file, type)
             return 0
@@ -131,7 +133,7 @@ def get_video_tracks(ffprobe: str, file: str) -> Optional[List['FFMpegTrack']]:
     def frame_rate_to_float(frame_rate: str) -> float:
         match = FFMPEG_FRAME_RATE_RE.match(frame_rate)
         if match is None:
-            logging.warning(
+            logger.warning(
                 'Invalid frame rate: %s while processing %s (stream type %s)',
                 frame_rate, file, type)
             return 0
@@ -154,7 +156,7 @@ def get_video_tracks(ffprobe: str, file: str) -> Optional[List['FFMpegTrack']]:
         ]
         code, result = run(args)
         if code != 0:
-            logging.error('Failed to get tracks: %s', result)
+            logger.error('Failed to get tracks: %s', result)
             return []
 
         tracks = []
@@ -165,10 +167,10 @@ def get_video_tracks(ffprobe: str, file: str) -> Optional[List['FFMpegTrack']]:
 
             def select_tag(tag: str) -> Optional[str]:
                 if 'tags' not in stream:
-                    logging.warning('No tags in stream %d while processing %s (stream type %s)', index, file, type)
+                    logger.warning('No tags in stream %d while processing %s (stream type %s)', index, file, type)
                     return None
                 if tag not in stream['tags']:
-                    logging.warning('No tag %s in stream %d while processing %s (stream type %s)', tag, index, file, type)
+                    logger.warning('No tag %s in stream %d while processing %s (stream type %s)', tag, index, file, type)
                     return None
                 return stream['tags'][tag]
             if (title := select_tag('title')) is None:
@@ -177,7 +179,7 @@ def get_video_tracks(ffprobe: str, file: str) -> Optional[List['FFMpegTrack']]:
                 language = "und"
             if (duration := select_tag('DURATION')) is None:
                 if 'duration' not in stream:
-                    logging.warning('No duration in stream %d while processing %s (stream type %s)', index, file, type)
+                    logger.warning('No duration in stream %d while processing %s (stream type %s)', index, file, type)
                     duration = 0
                 else:
                     duration = float(stream['duration'])
@@ -196,7 +198,7 @@ def get_video_tracks(ffprobe: str, file: str) -> Optional[List['FFMpegTrack']]:
             lambda index, codec, language, title, duration, data: VideoTrack(
                 index, codec, language, title, duration,
                 frame_rate_to_float(data['r_frame_rate'])))) is None:
-        logging.error('Failed to get video tracks')
+        logger.error('Failed to get video tracks')
         return None
     tracks.extend(res)
 
@@ -207,7 +209,7 @@ def get_video_tracks(ffprobe: str, file: str) -> Optional[List['FFMpegTrack']]:
             lambda index, codec, language, title, duration, data: AudioTrack(
                 index, codec, language, title, duration,
                 data['channels']))) is None:
-        logging.error('Failed to get audio tracks')
+        logger.error('Failed to get audio tracks')
         return None
     tracks.extend(res)
 
@@ -217,7 +219,7 @@ def get_video_tracks(ffprobe: str, file: str) -> Optional[List['FFMpegTrack']]:
             '',
             lambda index, codec, language, title, duration, _: SubtitleTrack(
                 index, codec, language, title, duration))) is None:
-        logging.error('Failed to get subtitle tracks')
+        logger.error('Failed to get subtitle tracks')
         return None
     tracks.extend(res)
 
@@ -265,7 +267,7 @@ class FFMpegRemuxer:
         self.args.append('-v')
         self.args.append('error')
 
-        logging.debug('Running ffmpeg: [%s]', ' '.join(self.args))
+        logger.debug('Running ffmpeg: [%s]', ' '.join(self.args))
         process = subprocess.Popen(self.args,
                                stdout=subprocess.PIPE,
                                universal_newlines=True,
@@ -285,7 +287,7 @@ class FFMpegRemuxer:
                 if (match := self.FFMPEG_FPS_RE.match(line)) is not None:
                     fps = float(match.group('fps'))
                 on_progress(frame, fps)
-                logging.debug(line.strip())
+                logger.debug(line.strip())
 
         process.wait()
 
