@@ -8,12 +8,7 @@
 
 import argparse
 import logging
-
-from ffmpeg import find_ffmpeg, find_ffprobe, get_supported_hevc_encoders, \
-    get_video_duration_seconds, get_video_tracks, VideoTrack
 from gui import run_gui
-from utils import get_gpu_name
-
 
 def setup_logging(args):
     class Fore:
@@ -64,7 +59,6 @@ def main():
     args = parser.parse_args()
 
     setup_logging(args)
-
     run_gui()
 
 if __name__ == '__main__':

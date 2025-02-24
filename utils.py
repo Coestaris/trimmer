@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-import os
+
 #
 # @file utils.py
 # @date 23-02-2025
 # @author Maxim Kurylko <vk_vm@ukr.net>
 #
 
+import os
 import platform
 import logging
 import re

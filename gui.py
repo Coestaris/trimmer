@@ -99,11 +99,11 @@ class FilterDialog(QtWidgets.QDialog):
         item = QtWidgets.QListWidgetItem('filter')
         item.setFlags(item.flags() | QtCore.Qt.ItemIsEditable)
         # Start editing the item
-        self.__filter_list.addItem(item)
-        self.__filter_list.editItem(item)
+        self.filter_list.addItem(item)
+        self.filter_list.editItem(item)
 
     def accept(self):
-        self.filters = [self.__filter_list.item(i).text() for i in range(self.__filter_list.count())]
+        self.filters = [self.filter_list.item(i).text() for i in range(self.filter_list.count())]
         super().accept()
 
     def __init__(self, title: str):
@@ -114,8 +114,8 @@ class FilterDialog(QtWidgets.QDialog):
         layout = QtWidgets.QVBoxLayout()
         self.setLayout(layout)
 
-        self.__filter_list = QtWidgets.QListWidget()
-        layout.addWidget(self.__filter_list)
+        self.filter_list = QtWidgets.QListWidget()
+        layout.addWidget(self.filter_list)
 
         items_container = QtWidgets.QWidget()
         items_layout = QtWidgets.QHBoxLayout()
@@ -124,7 +124,7 @@ class FilterDialog(QtWidgets.QDialog):
         add_button.clicked.connect(lambda: self.add_item())
         items_layout.addWidget(add_button)
         remove_button = QtWidgets.QPushButton('Remove')
-        remove_button.clicked.connect(lambda: self.__filter_list.takeItem(self.__filter_list.currentRow()))
+        remove_button.clicked.connect(lambda: self.filter_list.takeItem(self.filter_list.currentRow()))
         items_layout.addWidget(remove_button)
         layout.addWidget(items_container)
 
@@ -137,7 +137,7 @@ class FilterDialog(QtWidgets.QDialog):
 class GUI(QtWidgets.QMainWindow):
     def __init__(self, files: list[str]):
         super().__init__()
-        self.__init_ui()
+        self.init_ui()
         self.files = []
 
         self.ffmpeg = find_ffmpeg()
@@ -158,7 +158,7 @@ class GUI(QtWidgets.QMainWindow):
         if len(files) != 0:
             for file in files:
                 self.open_file(file)
-            self.__update_files_table()
+            self.update_files_table()
 
     def open_file(self, file: str):
         mkvfile = MKVFile(file)
@@ -171,31 +171,31 @@ class GUI(QtWidgets.QMainWindow):
 
         self.files.append(mkvfile)
 
-    def __update_files_table(self):
-        self.__files_table.setRowCount(len(self.files))
+    def update_files_table(self):
+        self.files_table.setRowCount(len(self.files))
         for i, mkvfile in enumerate(self.files):
-            self.__files_table.setItem(i, 0, CustomTableWidgetItem(os.path.basename(mkvfile.file), mkvfile))
-            self.__files_table.setItem(i, 1, QtWidgets.QTableWidgetItem(pretty_duration(mkvfile.duration_seconds)))
-            self.__files_table.setItem(i, 2, QtWidgets.QTableWidgetItem(file_track_summary(mkvfile)))
+            self.files_table.setItem(i, 0, CustomTableWidgetItem(os.path.basename(mkvfile.file), mkvfile))
+            self.files_table.setItem(i, 1, QtWidgets.QTableWidgetItem(pretty_duration(mkvfile.duration_seconds)))
+            self.files_table.setItem(i, 2, QtWidgets.QTableWidgetItem(file_track_summary(mkvfile)))
 
-    def __on_file_selected(self):
-        index = self.__files_table.currentRow()
+    def on_file_selected(self):
+        index = self.files_table.currentRow()
         if index == -1:
             # Clear metadata and tracks
-            self.__file_metadata.clear()
-            self.__file_tracks.setRowCount(0)
+            self.file_metadata.clear()
+            self.file_tracks.setRowCount(0)
             return
 
-        mkvfile = self.__files_table.item(index, 0).custom_data
+        mkvfile = self.files_table.item(index, 0).custom_data
 
         # Fill metadata
-        self.__file_metadata.clear()
+        self.file_metadata.clear()
         data = {
             'File': mkvfile.file,
             'Duration': f'{pretty_duration(mkvfile.duration_seconds)} ({mkvfile.duration_frames} frames)',
             'File size': pretty_size(os.path.getsize(mkvfile.file)),
         }
-        self.__file_metadata.setText('\n'.join([f'{k}: {v}' for k, v in data.items()]))
+        self.file_metadata.setText('\n'.join([f'{k}: {v}' for k, v in data.items()]))
 
         language_colors = {}
         for i, track in enumerate(mkvfile.tracks):
@@ -204,30 +204,30 @@ class GUI(QtWidgets.QMainWindow):
                 language_colors[language] = LANGUAGE_COLORS[len(language_colors) % len(LANGUAGE_COLORS)]
 
         # Fill tracks
-        self.__file_tracks.setRowCount(len(mkvfile.tracks))
+        self.file_tracks.setRowCount(len(mkvfile.tracks))
         for i, track in enumerate(mkvfile.tracks):
             keep_checkbox = QtWidgets.QCheckBox()
             keep_checkbox.setChecked(track.keep)
             def update(state, t=track):
                 t.keep = state == QtCore.Qt.Checked
-                self.__update_files_table()
+                self.update_files_table()
 
             keep_checkbox.stateChanged.connect(update)
 
-            self.__file_tracks.setCellWidget(i, 0, keep_checkbox)
-            self.__file_tracks.setItem(i, 1, QtWidgets.QTableWidgetItem(TYPE_ALIASES[type(track)]))
-            self.__file_tracks.item(i, 1).setBackground(QtGui.QColor(TYPE_COLORS[type(track)]))
-            self.__file_tracks.setItem(i, 2, QtWidgets.QTableWidgetItem(track.codec))
-            self.__file_tracks.setItem(i, 3, QtWidgets.QTableWidgetItem(track.language))
-            self.__file_tracks.item(i, 3).setBackground(QtGui.QColor(language_colors[track.language]))
-            self.__file_tracks.setItem(i, 4, QtWidgets.QTableWidgetItem(track.title))
-            self.__file_tracks.setItem(i, 5, QtWidgets.QTableWidgetItem(pretty_duration(track.duration)))
+            self.file_tracks.setCellWidget(i, 0, keep_checkbox)
+            self.file_tracks.setItem(i, 1, QtWidgets.QTableWidgetItem(TYPE_ALIASES[type(track)]))
+            self.file_tracks.item(i, 1).setBackground(QtGui.QColor(TYPE_COLORS[type(track)]))
+            self.file_tracks.setItem(i, 2, QtWidgets.QTableWidgetItem(track.codec))
+            self.file_tracks.setItem(i, 3, QtWidgets.QTableWidgetItem(track.language))
+            self.file_tracks.item(i, 3).setBackground(QtGui.QColor(language_colors[track.language]))
+            self.file_tracks.setItem(i, 4, QtWidgets.QTableWidgetItem(track.title))
+            self.file_tracks.setItem(i, 5, QtWidgets.QTableWidgetItem(pretty_duration(track.duration)))
             if isinstance(track, VideoTrack):
-                self.__file_tracks.setItem(i, 6, QtWidgets.QTableWidgetItem(f'{track.frame_rate:.2f} FPS'))
+                self.file_tracks.setItem(i, 6, QtWidgets.QTableWidgetItem(f'{track.frame_rate:.2f} FPS'))
             elif isinstance(track, AudioTrack):
-                self.__file_tracks.setItem(i, 6, QtWidgets.QTableWidgetItem(f'{track.channels} channels'))
+                self.file_tracks.setItem(i, 6, QtWidgets.QTableWidgetItem(f'{track.channels} channels'))
             else:
-                self.__file_tracks.setItem(i, 6, QtWidgets.QTableWidgetItem(''))
+                self.file_tracks.setItem(i, 6, QtWidgets.QTableWidgetItem(''))
 
     def add_files(self):
         logger.info('Add files')
@@ -238,7 +238,7 @@ class GUI(QtWidgets.QMainWindow):
             files = dialog.selectedFiles()
             for file in files:
                 self.open_file(file)
-            self.__update_files_table()
+            self.update_files_table()
 
     def add_directory(self):
         logger.info('Add directory')
@@ -250,17 +250,17 @@ class GUI(QtWidgets.QMainWindow):
                 for file in files:
                     if file.endswith('.mkv'):
                         self.open_file(os.path.join(root, file))
-            self.__update_files_table()
+            self.update_files_table()
 
     def remove_selected(self):
         logger.info('Remove selected')
-        self.__files_table.removeRow(self.__files_table.currentRow())
+        self.files_table.removeRow(self.files_table.currentRow())
 
     def remove_all(self):
         logger.info('Remove all')
-        self.__files_table.setRowCount(0)
+        self.files_table.setRowCount(0)
 
-    def __filter(self, filters: list[str], t: type):
+    def filter(self, filters: list[str], t: type):
         logger.info('Filters: %s', filters)
         for mkvfile in self.files:
             for track in mkvfile.tracks:
@@ -279,42 +279,42 @@ class GUI(QtWidgets.QMainWindow):
                         if filter.lower() in track.codec.lower():
                             track.keep = True
                             break
-        self.__update_files_table()
-        self.__on_file_selected()
+        self.update_files_table()
+        self.on_file_selected()
 
     def audio_filter(self):
         logger.info('Audio filter')
         filter = FilterDialog('Audio filter')
         if filter.exec_():
-            self.__filter(filter.filters, AudioTrack)
+            self.filter(filter.filters, AudioTrack)
 
     def video_filter(self):
         logger.info('Video filter')
         filter = FilterDialog('Video filter')
         if filter.exec_():
-            self.__filter(filter.filters, VideoTrack)
+            self.filter(filter.filters, VideoTrack)
 
     def subtitle_filter(self):
         logger.info('Subtitle filter')
         filter = FilterDialog('Audio filter')
         if filter.exec_():
-            self.__filter(filter.filters, SubtitleTrack)
+            self.filter(filter.filters, SubtitleTrack)
 
     def keep_all(self):
         logger.info('Keep all')
         for mkvfile in self.files:
             for track in mkvfile.tracks:
                 track.keep = True
-        self.__update_files_table()
-        self.__on_file_selected()
+        self.update_files_table()
+        self.on_file_selected()
 
     def keep_none(self):
         logger.info('Keep none')
         for mkvfile in self.files:
             for track in mkvfile.tracks:
                 track.keep = False
-        self.__update_files_table()
-        self.__on_file_selected()
+        self.update_files_table()
+        self.on_file_selected()
 
     def process(self):
         def on_progress(frame: int, fps: float):
@@ -324,19 +324,19 @@ class GUI(QtWidgets.QMainWindow):
             if not mkvfile.remux(self.ffmpeg, self.preferred_preset, self.preferred_encoder, on_progress):
                 logging.error('Failed to process file %s', mkvfile.file)
 
-    def __init_ui(self):
+    def init_ui(self):
         self.setWindowTitle('MKV Trimmer')
         # self.setGeometry(100, 100, 1500, 900)
         self.setMinimumSize(1600, 1000)
 
         # layout = QtWidgets.QVBoxLayout()
-        self.__main_tabwidget = QtWidgets.QTabWidget()
-        self.__files_tab = QtWidgets.QWidget()
-        self.__process_tab = QtWidgets.QWidget()
+        self.main_tabwidget = QtWidgets.QTabWidget()
+        self.files_tab = QtWidgets.QWidget()
+        self.process_tab = QtWidgets.QWidget()
 
-        self.__main_tabwidget.addTab(self.__files_tab, 'Files')
+        self.main_tabwidget.addTab(self.files_tab, 'Files')
         files_tab_layout = QtWidgets.QVBoxLayout()
-        self.__files_tab.setLayout(files_tab_layout)
+        self.files_tab.setLayout(files_tab_layout)
 
         toolbar = QtWidgets.QToolBar()
         toolbar.setMovable(False)
@@ -361,46 +361,46 @@ class GUI(QtWidgets.QMainWindow):
         # Make horizontal splitter. Top - table, bottom - details
         splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
 
-        self.__files_table = QtWidgets.QTableWidget()
-        self.__files_table.setColumnCount(3)
-        self.__files_table.setHorizontalHeaderLabels(['File', 'Duration', 'Tracks summary'])
+        self.files_table = QtWidgets.QTableWidget()
+        self.files_table.setColumnCount(3)
+        self.files_table.setHorizontalHeaderLabels(['File', 'Duration', 'Tracks summary'])
         # Make duration to take as little space as possible
-        self.__files_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
-        self.__files_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
-        self.__files_table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
-        self.__files_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
-        self.__files_table.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
-        self.__files_table.itemSelectionChanged.connect(self.__on_file_selected)
-        self.__files_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        splitter.addWidget(self.__files_table)
+        self.files_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        self.files_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+        self.files_table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
+        self.files_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.files_table.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.files_table.itemSelectionChanged.connect(self.on_file_selected)
+        self.files_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        splitter.addWidget(self.files_table)
 
-        self.__file_tracks = QtWidgets.QTableWidget()
-        self.__file_tracks.setColumnCount(7)
-        self.__file_tracks.setHorizontalHeaderLabels(['Keep', 'Type', 'Codec', 'Language', 'Title', 'Duration', 'FPS/Channels'])
-        self.__file_tracks.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
-        self.__file_tracks.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
-        self.__file_tracks.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
-        self.__file_tracks.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeToContents)
-        self.__file_tracks.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.Stretch)
-        self.__file_tracks.horizontalHeader().setSectionResizeMode(5, QtWidgets.QHeaderView.ResizeToContents)
-        self.__file_tracks.horizontalHeader().setSectionResizeMode(6, QtWidgets.QHeaderView.ResizeToContents)
-        self.__file_tracks.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
-        self.__file_tracks.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
-        self.__file_tracks.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        splitter.addWidget(self.__file_tracks)
+        self.file_tracks = QtWidgets.QTableWidget()
+        self.file_tracks.setColumnCount(7)
+        self.file_tracks.setHorizontalHeaderLabels(['Keep', 'Type', 'Codec', 'Language', 'Title', 'Duration', 'FPS/Channels'])
+        self.file_tracks.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
+        self.file_tracks.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+        self.file_tracks.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
+        self.file_tracks.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeToContents)
+        self.file_tracks.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.Stretch)
+        self.file_tracks.horizontalHeader().setSectionResizeMode(5, QtWidgets.QHeaderView.ResizeToContents)
+        self.file_tracks.horizontalHeader().setSectionResizeMode(6, QtWidgets.QHeaderView.ResizeToContents)
+        self.file_tracks.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.file_tracks.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.file_tracks.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        splitter.addWidget(self.file_tracks)
 
-        self.__file_metadata = QtWidgets.QLabel()
-        self.__file_metadata.setWordWrap(True)
-        splitter.addWidget(self.__file_metadata)
+        self.file_metadata = QtWidgets.QLabel()
+        self.file_metadata.setWordWrap(True)
+        splitter.addWidget(self.file_metadata)
 
         files_tab_layout.addWidget(splitter)
 
-        self.__main_tabwidget.addTab(self.__process_tab, 'Process')
+        self.main_tabwidget.addTab(self.process_tab, 'Process')
         process_tab_layout = QtWidgets.QVBoxLayout()
-        self.__process_tab.setLayout(process_tab_layout)
+        self.process_tab.setLayout(process_tab_layout)
         process_tab_layout.addWidget(QtWidgets.QLabel('Process'))
 
-        self.setCentralWidget(self.__main_tabwidget)
+        self.setCentralWidget(self.main_tabwidget)
 
 TEST_FILES = [
     "\\\\192.168.3.68\\share\\ext\\TE\\Inception.2010.1080p.BluRay.x264.5xRus.Eng-Otaibi.mkv",

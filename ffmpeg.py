@@ -37,7 +37,7 @@ def get_supported_hevc_encoders(ffmpeg: str) -> Optional[List[str]]:
 
     encoders = []
     for line in result.split('\n'):
-        if 'hevc' in line:
+        if 'hevc' in line or 'h265' in line:
             encoders.append(line.split(' ')[2])
     return encoders
 
@@ -240,11 +240,11 @@ class FFMpegRemuxer:
         self.args.extend(['-c:s', 'copy'])
         return self
 
-    def video_as_is(self, track: VideoTrack) -> 'FFMpegRemuxer':
+    def video_as_is(self, _: VideoTrack) -> 'FFMpegRemuxer':
         self.args.extend(['-c:v', 'copy'])
         return self
 
-    def video_to_hevc(self, track: VideoTrack, preset: str, encoder: str) -> 'FFMpegRemuxer':
+    def video_to_hevc(self, _: VideoTrack, preset: str, encoder: str) -> 'FFMpegRemuxer':
         self.args.extend(['-c:v', encoder, '-preset', preset, '-vtag', 'hvc1'])
         return self
 
@@ -266,8 +266,6 @@ class FFMpegRemuxer:
         self.args.append('error')
 
         logging.debug('Running ffmpeg: [%s]', ' '.join(self.args))
-
-        # If log file not specified, then log to stdout
         process = subprocess.Popen(self.args,
                                stdout=subprocess.PIPE,
                                universal_newlines=True,
@@ -288,7 +286,6 @@ class FFMpegRemuxer:
                     fps = float(match.group('fps'))
                 on_progress(frame, fps)
                 logging.debug(line.strip())
-
 
         process.wait()
 
