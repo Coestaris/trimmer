@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import os
 #
 # @file utils.py
 # @date 23-02-2025
@@ -25,6 +25,14 @@ def run(args: List[str]) -> Tuple[int, str]:
     output = stdout + stderr
     logger.debug('code: %d, output: [%s]', process.returncode, output)
     return process.returncode, output
+
+def unique_bak_name(file):
+    i = 0
+    while True:
+        new_file = f'{file}.bak{i}'
+        if not os.path.exists(new_file):
+            return new_file
+        i += 1
 
 def get_gpu_name():
     if platform.system() == 'Windows':

@@ -51,52 +51,6 @@ def setup_logging(args):
     handler.setFormatter(logging.Formatter(get_format_string(not args.colorless, args.log == "debug")))
     logging.getLogger().addHandler(handler)
 
-class MKVFile:
-    def __init__(self, file: str):
-        self.file = file
-        self.tracks = []
-        self.duration_frames = None
-
-    def __estimate_duration_frames(self) -> int:
-        estimations = []
-        for track in self.tracks:
-            if isinstance(track, VideoTrack):
-                if track.frame_rate is not None and track.frame_rate != 0:
-                    fps = track.frame_rate
-                else:
-                    logging.warning("No frame rate for track %s", track)
-
-                if track.duration is not None and track.duration != 0:
-                    duration = track.duration
-                else:
-                    logging.warning("No duration for track %s", track)
-
-                estimations.append(int(fps * duration))
-
-        # If there are no video tracks, return None
-        if len(estimations) == 0:
-            logging.warning("Cannot estimate duration in frames: no video tracks of file %s", self.file)
-            return None
-
-        # If estimations are different, return the average
-        ALLOWED_DIFFERENCE = 0.01 # 1%
-        if max(estimations) - min(estimations) > max(estimations) * ALLOWED_DIFFERENCE:
-            logging.warning("Estimations are different: %s", estimations)
-            return sum(estimations) // len(estimations)
-
-        return estimations[0]
-
-    def parse(self, ffprobe: str) -> bool:
-        self.tracks = get_video_tracks(ffprobe, self.file)
-        if self.tracks is None:
-            logging.error('Failed to get video tracks of file %s', self.file)
-            return False
-        logging.debug('Tracks: %s', self.tracks)
-
-        self.duration_frames = self.__estimate_duration_frames()
-        logging.debug('Duration in frames: %s', self.duration_frames)
-        pass
-
 def main():
     parser = argparse.ArgumentParser(description='MKV Trimmer')
     parser.add_argument("--log-file", type=str, help="Log file")

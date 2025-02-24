@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
-import json
+
 #
 # @file ffmpeg.py
 # @date 23-02-2025
 # @author Maxim Kurylko <vk_vm@ukr.net>
 #
 
-import os
+import json
 import re
 import subprocess
 import logging
-from typing import Optional, List, Tuple, Callable, Any, Dict
+from typing import Optional, List, Callable
 
 from utils import run
 
+# 02:27:57.535000000
+FFMPEG_DURATION_RE = re.compile(r'(?P<hours>\d+):(?P<minutes>\d+):(?P<seconds>\d+\.\d+)')
+# 24000/1001
+FFMPEG_FRAME_RATE_RE = re.compile(r'(?P<dividend>\d+)/(?P<divisor>\d+)')
 
 def find_ffmpeg() -> Optional[str]:
     import shutil
@@ -76,6 +80,7 @@ class FFMpegTrack:
         self.language = language
         self.title = title
         self.duration = duration
+        self.keep = True
 
     def __str__(self):
         return f'{self.index}; codec={self.codec}, lang={self.language}, title=\"{self.title}\", duration={self.duration:.2f}'
@@ -108,11 +113,6 @@ class SubtitleTrack(FFMpegTrack):
 
     def __str__(self):
         return f'SubtitleTrack({super().__str__()})'
-
-# 02:27:57.535000000
-FFMPEG_DURATION_RE = re.compile(r'(?P<hours>\d+):(?P<minutes>\d+):(?P<seconds>\d+\.\d+)')
-# 24000/1001
-FFMPEG_FRAME_RATE_RE = re.compile(r'(?P<dividend>\d+)/(?P<divisor>\d+)')
 
 def get_video_tracks(ffprobe: str, file: str) -> Optional[List['FFMpegTrack']]:
     def duration_to_secs(duration: str) -> float:
@@ -148,7 +148,7 @@ def get_video_tracks(ffprobe: str, file: str) -> Optional[List['FFMpegTrack']]:
             ffprobe,
             '-v', 'error',
             '-select_streams', type,
-            '-show_entries', f'stream={add_entries}index,codec_name:stream_tags=language,title,duration{add_tags}',
+            '-show_entries', f'stream={add_entries},duration,index,codec_name:stream_tags=language,duration,title{add_tags}',
             '-of', 'json',
             file
         ]
@@ -176,9 +176,15 @@ def get_video_tracks(ffprobe: str, file: str) -> Optional[List['FFMpegTrack']]:
             if (language := select_tag('language')) is None:
                 language = "und"
             if (duration := select_tag('DURATION')) is None:
-                duration = "0:00:00.000"
+                if 'duration' not in stream:
+                    logging.warning('No duration in stream %d while processing %s (stream type %s)', index, file, type)
+                    duration = 0
+                else:
+                    duration = float(stream['duration'])
+            else:
+                duration = duration_to_secs(duration)
 
-            tracks.append(parser(index, codec, language, title, duration_to_secs(duration), stream))
+            tracks.append(parser(index, codec, language, title, duration, stream))
 
         return tracks
 
@@ -218,7 +224,10 @@ def get_video_tracks(ffprobe: str, file: str) -> Optional[List['FFMpegTrack']]:
     return tracks
 
 class FFMpegRemuxer:
-    FFMPEG_PROCESSED_FRAMES_RE = re.compile(r'frame=\s*(\d+)')
+    # frame=2567
+    FFMPEG_PROCESSED_FRAMES_RE = re.compile(r'frame=(?P<frame>\d+)')
+    # fps=13.90
+    FFMPEG_FPS_RE = re.compile(r'fps=(?P<fps>\d+\.\d+)')
 
     def __init__(self, ffmpeg: str, file: str):
         self.args = [ffmpeg, '-i', file, '-y']
@@ -231,11 +240,11 @@ class FFMpegRemuxer:
         self.args.extend(['-c:s', 'copy'])
         return self
 
-    def video_as_is(self) -> 'FFMpegRemuxer':
+    def video_as_is(self, track: VideoTrack) -> 'FFMpegRemuxer':
         self.args.extend(['-c:v', 'copy'])
         return self
 
-    def video_to_hevc(self, preset: str, encoder: str) -> 'FFMpegRemuxer':
+    def video_to_hevc(self, track: VideoTrack, preset: str, encoder: str) -> 'FFMpegRemuxer':
         self.args.extend(['-c:v', encoder, '-preset', preset, '-vtag', 'hvc1'])
         return self
 
@@ -244,10 +253,10 @@ class FFMpegRemuxer:
         return self
 
     def keep_track(self, track: FFMpegTrack) -> 'FFMpegRemuxer':
-        self.args.extend(['-map', f'0:{track}'])
+        self.args.extend(['-map', f'0:{track.index}'])
         return self
 
-    def process(self, output_file: str, on_progress: Callable[[int], None]) -> bool:
+    def process(self, output_file: str, on_progress: Callable[[int, float], None]) -> bool:
         self.args.append(output_file)
 
         # Track progress
@@ -265,17 +274,41 @@ class FFMpegRemuxer:
                                encoding='utf-8',
                                bufsize=1)
 
+        frame = 0
+        fps = 0
         while True:
             # Print stdout
             line = process.stdout.readline()
             if line == '' and process.poll() is not None:
                 break
             if line:
-                match = self.FFMPEG_PROCESSED_FRAMES_RE.search(line)
-                if match:
-                    on_progress(int(match.group(1)))
+                if (match := self.FFMPEG_PROCESSED_FRAMES_RE.match(line)) is not None:
+                    frame = int(match.group('frame'))
+                if (match := self.FFMPEG_FPS_RE.match(line)) is not None:
+                    fps = float(match.group('fps'))
+                on_progress(frame, fps)
                 logging.debug(line.strip())
+
 
         process.wait()
 
         return process.returncode == 0
+
+def prefer_hevc_encoder(encoders: List[str], gpu_name: str) -> Optional[str]:
+    if 'nvidia' in gpu_name.lower():
+        for encoder in encoders:
+            if 'nvenc' in encoder:
+                return encoder
+    elif 'intel' in gpu_name.lower():
+        for encoder in encoders:
+            if 'qsv' in encoder:
+                return encoder
+    elif 'amd' in gpu_name.lower():
+        for encoder in encoders:
+            if 'amf' in encoder:
+                return encoder
+
+    if 'libx265' in encoders:
+        return 'libx265'
+
+    return None
