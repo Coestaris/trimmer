@@ -88,11 +88,6 @@ class Colors:
                 '#6b1414', # Red
                 '#424242', # Dark gray
                 '#455A64', # Blue
-                '#FAD2CF', # Pink
-                '#FEEFC3', # Yellow
-                '#F5F5F5', # Light gray
-                '#F8F8F8', # Lighter gray
-                '#F0F0F0', # Lightest gray
             ]
         else:
             return [
@@ -923,6 +918,11 @@ class GUI(QtWidgets.QMainWindow):
 
         start_time = time.time()
         overall_eta = ETACalculator(start_time, 0)
+
+        # Forbid changing window size to the contents
+        # allowing only manual chanes, to prevent visual glithes
+        if platform.system() == 'Darwin':
+            self.setFixedSize(self.size())
 
         def update_overall_progress():
             total_percent = sum(status.completed_percent for status in file_statuses) / len(file_statuses)
