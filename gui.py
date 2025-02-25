@@ -126,8 +126,8 @@ class Colors:
     @staticmethod
     def get_icon_color() -> str:
         if Colors.is_dark:
-            # Dark dark gray
-            return '#424242'
+            # Light gray
+            return '#F5F5F5'
         else:
             return '#000000'
 
