@@ -45,6 +45,6 @@ python3 -m venv .venv
 ### Windows 10 or newer setup guide:
 
 1. Download and install Python 3.8 or newer from the official website. Make sure to check the 'Add Python to the environment variables' option during the installation 
-2. Download the `ffmpeg` utility from the official website
+2. Download and install `ffmpeg` utility from the official website
 3. Download the utility from the repository: https://github.com/Coestaris/trimmer/archive/refs/heads/main.zip
 4. Run the `trimmer.bat` file. Note that the first run may take some time to install the dependencies
