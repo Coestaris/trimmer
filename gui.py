@@ -8,6 +8,7 @@
 
 import logging
 import os
+import platform
 import shutil
 import time
 from typing import List
@@ -15,6 +16,10 @@ from typing import List
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QAction
+
+if platform.system() == 'Windows':
+    from PyQt5.QtWinExtras import QWinTaskbarProgress, QWinTaskbarButton
+
 
 from __version__ import __version__
 from ffmpeg import find_ffmpeg, find_ffprobe, get_supported_hevc_codecs, \
@@ -108,9 +113,10 @@ class FilterDialog(QtWidgets.QDialog):
         self.filters = [self.filter_list.item(i).text() for i in range(self.filter_list.count())]
         super().accept()
 
-    def __init__(self, title: str):
+    def __init__(self, icon: QIcon, title: str):
         super().__init__()
         self.setWindowTitle(title)
+        self.setWindowIcon(icon)
         # self.setGeometry(100, 100, 500, 500)
 
         layout = QtWidgets.QVBoxLayout()
@@ -718,19 +724,19 @@ class GUI(QtWidgets.QMainWindow):
 
     def audio_filter(self):
         logger.info('Audio filter')
-        filter = FilterDialog('Audio filter')
+        filter = FilterDialog(QIcon(AUDIO_FILTER_ICON), 'Audio filter')
         if filter.exec_():
             self.filter(filter.filters, AudioTrack)
 
     def video_filter(self):
         logger.info('Video filter')
-        filter = FilterDialog('Video filter')
+        filter = FilterDialog(QIcon(VIDEO_FILTER_ICON), 'Video filter')
         if filter.exec_():
             self.filter(filter.filters, VideoTrack)
 
     def subtitle_filter(self):
         logger.info('Subtitle filter')
-        filter = FilterDialog('Audio filter')
+        filter = FilterDialog(QIcon(SUBTITLE_FILTER_ICON), 'Audio filter')
         if filter.exec_():
             self.filter(filter.filters, SubtitleTrack)
 
@@ -848,6 +854,10 @@ class GUI(QtWidgets.QMainWindow):
         self.overall_progress.setValue(0)
         self.current_progress_label.setText('')
         self.current_progress.setValue(0)
+        if hasattr(self, 'win_taskbar_progress'):
+            self.win_taskbar_progress.setVisible(True)
+            self.win_taskbar_progress.show()
+            self.win_taskbar_progress.resume()
 
         start_time = time.time()
         overall_eta = ETACalculator(start_time, 0)
@@ -856,12 +866,17 @@ class GUI(QtWidgets.QMainWindow):
             total_percent = sum(status.completed_percent for status in file_statuses) / len(file_statuses)
             overall_eta.feed(total_percent)
             self.overall_progress.setValue(int(total_percent))
-            self.overall_progress.setFormat(f'{total_percent:.2f}%')
+            self.overall_progress_simple_label.setText(
+                f'{total_percent:.2f}%'
+            )
             self.overall_progress_label.setText(
-                f'Overall progress: {total_percent:.2f}%. '
                 f'Time elapsed: {pretty_duration(time.time() - start_time)}. '
                 f'ETA: {pretty_duration(overall_eta.get())}'
             )
+
+            if hasattr(self, 'win_taskbar_progress'):
+                self.win_taskbar_progress.setValue(int(total_percent))
+
 
         def update_file_status_with_gui(index, status):
             file_statuses[index].set_status(status)
@@ -877,7 +892,9 @@ class GUI(QtWidgets.QMainWindow):
             status.update_progress(frame)
 
             self.current_progress.setValue(int(status.completed_percent))
-            self.current_progress.setFormat(f'{os.path.basename(status.file.file)} - {status.completed_percent:.2f}%')
+            self.current_progress_simple_label.setText(
+                f'{os.path.basename(status.file.file)} - {status.completed_percent:.2f}%'
+            )
             self.current_progress_label.setText(
                 f'FPS: {fps:.2f} ({fps / status.file.fps:.2f}x of realtime). ' 
                 f'{frame}/{status.total_frames} frames processed. '
@@ -1050,17 +1067,37 @@ class GUI(QtWidgets.QMainWindow):
             # Two progress bars: one for current file, one for overall progress + label below them
             self.current_progress = QtWidgets.QProgressBar()
             self.current_progress.setRange(0, 100)
+            self.current_progress.setTextVisible(False)
             process_tab_layout.addWidget(self.current_progress)
 
+            # On windows, ProgressBar text looks terrible, so we will use label instead
+            # One on the left side with some advanced info, one on the right side with simple info
+            widget = QtWidgets.QWidget()
+            layout = QtWidgets.QHBoxLayout()
+            widget.setLayout(layout)
+            layout.setContentsMargins(0, 0, 0, 0)
             self.current_progress_label = QtWidgets.QLabel('')
-            process_tab_layout.addWidget(self.current_progress_label)
+            layout.addWidget(self.current_progress_label, alignment=QtCore.Qt.AlignLeft)
+            layout.addStretch()
+            self.current_progress_simple_label = QtWidgets.QLabel('')
+            layout.addWidget(self.current_progress_simple_label, alignment=QtCore.Qt.AlignRight)
+            process_tab_layout.addWidget(widget)
 
             self.overall_progress = QtWidgets.QProgressBar()
             self.overall_progress.setRange(0, 100)
+            self.overall_progress.setTextVisible(False)
             process_tab_layout.addWidget(self.overall_progress)
 
+            widget = QtWidgets.QWidget()
+            layout = QtWidgets.QHBoxLayout()
+            widget.setLayout(layout)
+            layout.setContentsMargins(0, 0, 0, 0)
             self.overall_progress_label = QtWidgets.QLabel('')
-            process_tab_layout.addWidget(self.overall_progress_label)
+            layout.addWidget(self.overall_progress_label, alignment=QtCore.Qt.AlignLeft)
+            layout.addStretch()
+            self.overall_progress_simple_label = QtWidgets.QLabel('')
+            layout.addWidget(self.overall_progress_simple_label, alignment=QtCore.Qt.AlignRight)
+            process_tab_layout.addWidget(widget)
 
             process_tab.setLayout(process_tab_layout)
             return process_tab
@@ -1072,6 +1109,17 @@ class GUI(QtWidgets.QMainWindow):
         self.main_tabwidget.addTab(self.process_tab, 'Process')
 
         self.setCentralWidget(self.main_tabwidget)
+
+    def showEvent(self, a0):
+        # In constructor, window handle seems to be not yet created
+        if platform.system() == 'Windows':
+            logger.info('Windows detected, enabling taskbar progress')
+            self.win_taskbar_button = QWinTaskbarButton(self)
+            self.win_taskbar_button.setWindow(self.windowHandle())
+
+            self.win_taskbar_progress = self.win_taskbar_button.progress()
+            self.win_taskbar_progress.setRange(0, 100)
+            self.win_taskbar_progress.setVisible(False)
 
 def run_gui(only_backup_manager: bool, start_files: List[str]):
     app = QtWidgets.QApplication([])

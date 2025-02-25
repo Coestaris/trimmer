@@ -6,7 +6,7 @@
 # @author Maxim Kurylko <vk_vm@ukr.net>
 #
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __author__ = "Maxim Kurylko <vk_vm@ukr.net>"
 __description__ = (
      f"This is a small frontend for the 'ffmpeg' utility (version: {__version__})\n"

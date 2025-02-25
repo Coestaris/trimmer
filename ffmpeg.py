@@ -7,12 +7,14 @@
 #
 
 import json
+import platform
 import re
 import subprocess
 import logging
 from typing import Optional, List, Callable, Any
 import shutil
 from result import Result, Ok, Err
+import atexit
 
 from utils import run, pretty_errno
 
@@ -45,6 +47,9 @@ class Codec:
 
     def __str__(self):
         return f'Codec({self.name})'
+
+    def __repr__(self):
+        return self.__str__()
 
 LIBX265_CODEC = Codec(
     'libx265',
@@ -383,7 +388,16 @@ class FFMpegRemuxer:
                                stderr=subprocess.PIPE,
                                universal_newlines=True,
                                encoding='utf-8',
+                               creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == 'Windows' else 0,
                                bufsize=1)
+
+        pid = process.pid
+        if platform.system() == 'Windows':
+            # Kill the process if the parent is killed
+            def kill_child():
+                logger.warning('Unxepected exit. Killing child process: %d', pid)
+                subprocess.run(['taskkill', '/F', '/T', '/PID', str(pid)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            atexit.register(kill_child)
 
         frame = 0
         fps = 0
@@ -422,5 +436,8 @@ class FFMpegRemuxer:
 
         if process.returncode == 0:
             return Ok(None)
+
+        if platform.system() == 'Windows':
+            atexit.unregister(kill_child)
 
         return Err(f'Failed to process file. Exit code: {process.returncode} ({process.returncode} - {pretty_errno(process.returncode)}): {stderr.strip()}')

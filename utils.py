@@ -21,10 +21,11 @@ logger = logging.getLogger(__name__)
 def run(args: List[str]) -> Tuple[int, str]:
     logger.debug('Running command: [%s]', ' '.join(args))
     process = subprocess.Popen(args,
-                               stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE,
-                               universal_newlines=True,
-                               encoding='utf-8')
+                           stdout=subprocess.PIPE,
+                           stderr=subprocess.PIPE,
+                           universal_newlines=True,
+                           creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == 'Windows' else 0,
+                           encoding='utf-8')
     stdout, stderr = process.communicate()
     output = stdout + stderr
     logger.debug('code: %d, output: [%s]', process.returncode, output)

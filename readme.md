@@ -37,20 +37,7 @@ python __main__.py
 ```
 ### Windows 10 or newer setup guide:
 
-1. Download and install Python 3.8 or newer from the official website 
+1. Download and install Python 3.8 or newer from the official website. Make sure to check the 'Add Python to the environment variables' option during the installation 
 2. Download the 'ffmpeg' utility from the official website
 3. Download the utility from the repository: https://github.com/Coestaris/trimmer/archive/refs/heads/main.zip
-4. Extract the archive to any folder
-5. Open the folder in the file manager
-6. Hold 'Shift' and right-click on the empty space in the folder to open the context menu and select 'Open PowerShell window here'
-7. Run the following commands in the PowerShell window:
-```powershell
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-8. Run the utility:
-```powershell
-python __main__.py
-```
-or double-click on the `__main__.py` file
+4. Run the 'trimmer.bat' file. Note that the first run may take some time to install the dependencies
