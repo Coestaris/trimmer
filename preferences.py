@@ -18,6 +18,8 @@ def prefer_hevc_codec(codecs: List[str], gpu_name: str) -> Result[Codec, str]:
         logger.info("Preferred HEVC codec: %s", HEVC_NVENC_CODEC)
         return Ok(HEVC_NVENC_CODEC)
 
+    # On Apple Silicon, libx265 seems to faster than hevc_videotoolbox
+    # So prefer libx265
     if LIBX265_CODEC in codecs:
         logger.info("Preferred HEVC codec: %s", LIBX265_CODEC)
         return Ok(LIBX265_CODEC)

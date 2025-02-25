@@ -26,6 +26,9 @@ FFMPEG_FRAME_RATE_RE = re.compile(r'(?P<dividend>\d+)/(?P<divisor>\d+)')
 logger = logging.getLogger(__name__)
 
 # TODO: Maybe get this from ffmpeg?
+# Actually there's ffmpeg -h encoder=<...> that can be used to get the
+# list of presets, tunes and profiles. But in some reason, libx265 doesn't
+# show them all.
 class Codec:
     def __init__(self, name: str,
                  presets: List[str],
@@ -127,6 +130,28 @@ HEVC_NVENC_CODEC = Codec(
     'main'
 )
 
+HEVC_VIDEOTOOLBOX_CODEC = Codec(
+    'hevc_videotoolbox',
+    [
+        'default',
+        'slow',
+        'medium',
+        'fast',
+        'faster',
+        'fastest',
+    ],
+    'medium',
+    [
+        'default',
+    ],
+    'default',
+    [
+        'main',
+        'main10',
+    ],
+    'main'
+)
+
 def find_ffmpeg() -> Result[str, str]:
     ffmpeg = shutil.which('ffmpeg')
     if ffmpeg is None:
@@ -148,7 +173,7 @@ def get_supported_hevc_codecs(ffmpeg: str) -> Result[List[Codec], str]:
     if code != 0:
         return Err(f'Failed to get codecs: {result.strip()}')
 
-    known_codecs = [ LIBX265_CODEC, HEVC_NVENC_CODEC ]
+    known_codecs = [ LIBX265_CODEC, HEVC_NVENC_CODEC, HEVC_VIDEOTOOLBOX_CODEC ]
     codecs = []
     for line in result.split('\n'):
         for codec in known_codecs:

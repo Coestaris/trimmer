@@ -65,6 +65,16 @@ def get_gpu_name() -> Result[str, str]:
 
         return Err("Failed to get GPU: No GPU found")
 
+    elif platform.system() == 'Darwin':
+        code, output = run(['system_profiler', 'SPDisplaysDataType'])
+        regex = re.compile(r'^\s+Chipset Model: (?P<model>.+)$')
+        for line in output.splitlines():
+            match = regex.match(line)
+            if match:
+                return Ok(match.group('model'))
+
+        return Err("Failed to get GPU: No GPU found")
+
     else:
         return Err("Failed to get GPU: Unsupported OS")
 
