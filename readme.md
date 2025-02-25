@@ -35,13 +35,12 @@ Supported codecs:
 ```bash
 git clone https://github.com/Coestaris/trimmer
 cd trimmer
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+python3 -m venv .venv
+.venv/bin/pip3 install -r requirements.txt
 ```
 3. Run the utility:
 ```bash
-python __main__.py
+.venv/bin/python __main__.py
 ```
 ### Windows 10 or newer setup guide:
 
