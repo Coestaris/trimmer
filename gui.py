@@ -441,31 +441,31 @@ class GUI(QtWidgets.QMainWindow):
         self.ffmpeg = find_ffmpeg()
         if self.ffmpeg.is_err():
             self.popup_error(f"Unable to find ffmpeg: {self.ffmpeg.err()}. Make sure it is installed and in PATH")
-            return
+            raise SystemExit
         self.ffmpeg = self.ffmpeg.unwrap()
 
         self.ffprobe = find_ffprobe()
         if self.ffprobe.is_err():
             self.popup_error(f"Unable to find ffprobe: {self.ffprobe.err()}. Make sure it is installed and in PATH")
-            return
+            raise SystemExit
         self.ffprobe = self.ffprobe.unwrap()
 
         self.gpu_name = get_gpu_name()
         if self.gpu_name.is_err():
             self.popup_error(f"Unable to get GPU name: {self.gpu_name.err()}")
-            return
+            raise SystemExit
         self.gpu_name = self.gpu_name.unwrap()
 
         self.supported_codecs = get_supported_hevc_codecs(self.ffmpeg)
         if self.supported_codecs.is_err():
             self.popup_error(f"Unable to get supported codecss: {self.supported_codecs.err()}")
-            return
+            raise SystemExit
         self.supported_codecs = self.supported_codecs.unwrap()
 
         self.preferred_codec = prefer_hevc_codec(self.supported_codecs, self.gpu_name)
         if self.preferred_codec.is_err():
             self.popup_error(f'No suitable HEVC codec found: {self.preferred_codec.err()}')
-            return
+            raise SystemExit
         self.preferred_codec = self.preferred_codec.unwrap()
 
         logger.info('FFMpeg: %s', self.ffmpeg)
