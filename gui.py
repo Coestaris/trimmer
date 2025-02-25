@@ -975,6 +975,10 @@ class GUI(QtWidgets.QMainWindow):
             self.overall_progress.setFormat('Done')
             self.overall_progress_label.setText('Time elapsed: ' + pretty_duration(time.time() - start_time))
 
+            if hasattr(self, 'win_taskbar_progress'):
+                self.win_taskbar_progress.pause()
+                self.win_taskbar_progress.setVisible(False)
+
         # Add files to process
         self.process_table.setRowCount(len(self.files))
         for i, file_status in enumerate(file_statuses):
