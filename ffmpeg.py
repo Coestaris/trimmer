@@ -43,6 +43,9 @@ class Codec:
         self.profiles = profiles
         self.preferred_profile = preferred_profile
 
+    def __str__(self):
+        return f'Codec({self.name})'
+
 LIBX265_CODEC = Codec(
     'libx265',
     [
@@ -201,9 +204,7 @@ class VideoTrack(FFMpegTrack):
         self.frame_rate = frame_rate
 
     def is_h265(self) -> bool:
-        # TODO: !!!
-        return False
-        # return 'hevc' in self.codec or 'h265' in self.codec
+        return 'hevc' in self.codec or 'h265' in self.codec
 
     def __str__(self):
         return f'VideoTrack({super().__str__()}, fps={self.frame_rate:.2f})'

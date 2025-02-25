@@ -374,7 +374,7 @@ class GUI(QtWidgets.QMainWindow):
             'Duration': f'{pretty_duration(mkvfile.duration_seconds)} ({mkvfile.duration_frames} frames)',
             'File size': pretty_size(os.path.getsize(mkvfile.file)),
             'Video':
-                'is H.265: ' + ('Yes' if any(track.is_h265() for track in mkvfile.tracks if track.keep and isinstance(track, VideoTrack)) else 'No') + \
+                'is H.265: ' + ('yes' if any(track.is_h265() for track in mkvfile.tracks if track.keep and isinstance(track, VideoTrack)) else 'no') + \
                 f', codec: "{mkvfile.codec.name}", preset: "{mkvfile.preset}", tune: "{mkvfile.tune}", profile: "{mkvfile.profile}"'
         }
         self.file_metadata.setText('\n'.join([f'{k}: {v}' for k, v in data.items()]))
@@ -589,7 +589,7 @@ class GUI(QtWidgets.QMainWindow):
                     self.eta.reset(time.time(), 0)
 
             def update_progress(self, frame: int):
-                self.completed_percent = int(frame / self.total_frames * 100)
+                self.completed_percent = frame / self.total_frames * 100
                 self.eta.feed(self.completed_percent)
                 self.update_time = time.time()
 
@@ -620,17 +620,17 @@ class GUI(QtWidgets.QMainWindow):
             file_statuses[index].set_status(status)
             self.process_table.setItem(index, 1, QtWidgets.QTableWidgetItem(status))
             self.process_table.item(index, 1).setBackground(QtGui.QColor(STATUS_COLORS[status]))
-            self.process_table.setItem(index, 2, QtWidgets.QTableWidgetItem(str(time.strftime('%H:%M:%S'))))
+            self.process_table.setItem(index, 2, QtWidgets.QTableWidgetItem(str(time.strftime('%d-%m-%Y %H:%M:%S'))))
             update_overall_progress()
 
         def on_progress(index, frame: int, fps: float):
-            logger.info('Progress: %d frames, %f FPS', frame, fps)
+            logger.debug('Progress: %d frames, %f FPS', frame, fps)
 
             status = file_statuses[index]
             status.update_progress(frame)
 
             self.current_progress.setValue(int(status.completed_percent))
-            self.current_progress.setFormat(f'{os.path.basename(status.file.file)} - {status.completed_percent}%')
+            self.current_progress.setFormat(f'{os.path.basename(status.file.file)} - {status.completed_percent:.2f}%')
             self.current_progress_label.setText(
                 f'FPS: {fps:.2f} ({fps / status.file.fps:.2f}x of realtime). ' 
                 f'{frame}/{status.total_frames} frames processed. '
@@ -639,6 +639,15 @@ class GUI(QtWidgets.QMainWindow):
             )
 
             update_overall_progress()
+
+        def finished():
+            logger.info('All files processed')
+            self.current_progress.setValue(100)
+            self.current_progress.setFormat('Done')
+            self.current_progress_label.setText('')
+            self.overall_progress.setValue(100)
+            self.overall_progress.setFormat('Done')
+            self.overall_progress_label.setText('Time elapsed: ' + pretty_duration(time.time() - start_time))
 
         # Add files to process
         self.process_table.setRowCount(len(self.files))
@@ -654,6 +663,7 @@ class GUI(QtWidgets.QMainWindow):
 
         self.processing_thread.started.connect(self.worker.run)
         self.processing_thread.finished.connect(self.processing_thread.deleteLater)
+        self.processing_thread.finished.connect(finished)
         self.worker.finished.connect(self.processing_thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
 
@@ -676,7 +686,7 @@ class GUI(QtWidgets.QMainWindow):
             toolbar.setOrientation(QtCore.Qt.Horizontal)
             toolbar.setIconSize(QtCore.QSize(32, 32))
             toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-            toolbar.addAction(QIcon(BACKUP_MANAGER_ICON), 'Backup manager', lambda: self.backup_manager())
+            toolbar.addAction(QIcon(BACKUP_MANAGER_ICON), 'Backup\nmanager', lambda: self.backup_manager())
             toolbar.addSeparator()
             toolbar.addAction(QIcon(ADD_FILES_ICON), 'Add files', lambda: self.add_files())
             toolbar.addAction(QIcon(ADD_DIRECTORY_ICON), 'Add directory', lambda: self.add_directory())
@@ -686,8 +696,8 @@ class GUI(QtWidgets.QMainWindow):
             toolbar.addAction(QIcon(AUDIO_FILTER_ICON), 'Audio filter', lambda: self.audio_filter())
             toolbar.addAction(QIcon(VIDEO_FILTER_ICON), 'Video filter', lambda: self.video_filter())
             toolbar.addAction(QIcon(SUBTITLE_FILTER_ICON), 'Subtitle filter', lambda: self.subtitle_filter())
-            toolbar.addAction(QIcon(KEEP_ALL_ICON), 'Keep all', lambda: self.keep_all())
-            toolbar.addAction(QIcon(KEEP_NONE_ICON), 'Keep none', lambda: self.keep_none())
+            toolbar.addAction(QIcon(KEEP_ALL_ICON), 'Keep all\ntracks', lambda: self.keep_all())
+            toolbar.addAction(QIcon(KEEP_NONE_ICON), 'Keep none\ntracks', lambda: self.keep_none())
             toolbar.addSeparator()
             toolbar.addAction(QIcon(BATCH_ENCODING_OPTIONS_ICON), 'Batch codec\noptions', lambda: self.batch_encoding_options())
             toolbar.addSeparator()
@@ -753,20 +763,16 @@ class GUI(QtWidgets.QMainWindow):
             # Two progress bars: one for current file, one for overall progress + label below them
             self.current_progress = QtWidgets.QProgressBar()
             self.current_progress.setRange(0, 100)
-            self.current_progress.setValue(40)
-            self.current_progress.setFormat('Current file: %p%')
             process_tab_layout.addWidget(self.current_progress)
 
-            self.current_progress_label = QtWidgets.QLabel('Current progress: 40%. Time left: 1:23')
+            self.current_progress_label = QtWidgets.QLabel('')
             process_tab_layout.addWidget(self.current_progress_label)
 
             self.overall_progress = QtWidgets.QProgressBar()
             self.overall_progress.setRange(0, 100)
-            self.overall_progress.setValue(40)
-            self.overall_progress.setFormat('Overall progress: %p%')
             process_tab_layout.addWidget(self.overall_progress)
 
-            self.overall_progress_label = QtWidgets.QLabel('Overall progress: 40%. Time left: 1:23')
+            self.overall_progress_label = QtWidgets.QLabel('')
             process_tab_layout.addWidget(self.overall_progress_label)
 
             process_tab.setLayout(process_tab_layout)
@@ -780,19 +786,10 @@ class GUI(QtWidgets.QMainWindow):
 
         self.setCentralWidget(self.main_tabwidget)
 
-# TEST_FILES = [
-#     "\\\\192.168.3.68\\share\\ext\\TE\\Inception.2010.1080p.BluRay.x264.5xRus.Eng-Otaibi.mkv",
-#     "\\\\192.168.3.68\\share\\ext\\TE\\Once Upon a Time ... in Hollywood (2019) 1080p.mkv",
-# ]
-TEST_FILES = [
-    "/home/taris/downloads/South Park - S25E01 - Pajama Day.mkv",
-    "/home/taris/downloads/South Park - S25E02 - The Big Fix.mkv",
-]
-
 def run_gui():
     app = QtWidgets.QApplication([])
     app.setWindowIcon(QIcon(APP_ICON))
-    gui = GUI(TEST_FILES)
+    gui = GUI([])
 
     gui.show()
     app.exec_()

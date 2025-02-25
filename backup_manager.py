@@ -49,7 +49,7 @@ class BackupManager(QtWidgets.QDialog):
         self.files_table.setRowCount(len(self.files))
         self.files_table.setItem(len(self.files) - 1, 0, QtWidgets.QTableWidgetItem(nobak))
         self.files_table.setItem(len(self.files) - 1, 1, QtWidgets.QTableWidgetItem(file))
-        self.files_table.setItem(len(self.files) - 1, 2, QtWidgets.QTableWidgetItem(strftime("%Y-%m-%d %H:%M:%S", gmtime(os.path.getmtime(file)))))
+        self.files_table.setItem(len(self.files) - 1, 2, QtWidgets.QTableWidgetItem(strftime('%d-%m-%Y %H:%M:%S', gmtime(os.path.getmtime(file)))))
         self.files_table.setItem(len(self.files) - 1, 3, QtWidgets.QTableWidgetItem(pretty_size(os.path.getsize(nobak))))
         self.files_table.setItem(len(self.files) - 1, 4, QtWidgets.QTableWidgetItem(pretty_size(os.path.getsize(file))))
 
