@@ -6,6 +6,12 @@ and then transcode them to a new file.
 By default, utility will try to re-encode video streams to H.265/HEVC codec
 using 'libx265' or any available hardware encoder (e.g. 'hevc_nvenc' for NVIDIA GPUs).
 
+<p align="center">
+  <img src=https://github.com/Coestaris/trimmer/blob/main/screenshots/1.jpg width="350">
+  <img src=https://github.com/Coestaris/trimmer/blob/main/screenshots/2.jpg width="350">
+  <img src=https://github.com/Coestaris/trimmer/blob/main/screenshots/3.jpg width="350">
+</p>
+
 Requirements:
 - Python 3.8 or newer with pip: https://www.python.org/downloads/
 - ffmpeg/ffprobe (should be available in the system PATH): https://ffmpeg.org/download.html
@@ -15,10 +21,12 @@ Supported containers:
 - MP4 (not tested)
 - AVI (not tested)
 - MOV (not tested)
+- M2TS (tested)
 
 Supported codecs:
 - libx265 (tested)
 - hevc_nvenc (tested)
+- hevc_videotoolbox (tested)
 
 ### Linux/MacOS setup guide:
 
