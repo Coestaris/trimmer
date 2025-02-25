@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-from result import Result, Err, Ok
 
 #
-# @file mkv_file.py
+# @file container.py
 # @date 24-02-2025
 # @author Maxim Kurylko <kurylko.m@ajax.systems>
 #
 
+from result import Result, Err, Ok
 from ffmpeg import VideoTrack, get_video_tracks, FFMpegRemuxer, Codec
 import logging
 import os
@@ -16,7 +16,7 @@ from utils import unique_bak_name
 
 logger = logging.getLogger(__name__)
 
-class MKVFile:
+class Container:
     def __init__(self, file: str, codec: Codec):
         self.file = file
         self.tracks = []

@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 
 #
-# @file mkvtrimmer.py
+# @file __main__.py
 # @date 23-02-2025
 # @author Maxim Kurylko <vk_vm@ukr.net>
 #
 
 import argparse
 import logging
+import os
+
 from gui import run_gui
+
+from __version__ import __version__, __author__, __description__
+
 
 def setup_logging(args):
     class Fore:
@@ -47,17 +52,23 @@ def setup_logging(args):
     logging.getLogger().addHandler(handler)
 
 def main():
-    parser = argparse.ArgumentParser(description='MKV Trimmer')
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, prog=os.path.basename(__file__))
+    parser.description = __description__
     parser.add_argument("--log-file", type=str, help="Log file")
     parser.add_argument("-l", "--log", type=str, default="info", choices=["debug", "info", "warning", "error", "critical"],
                         help="Log level. Note: 'debug' log level may print sensitive information,\n" 
                              "produce a lot of output and program may run slower/incorectly")
-    parser.add_argument("--colorless", action="store_true",
-                        help="Disable colored output")
+    parser.add_argument("--colorless", action="store_true", help="Disable colored output")
+    parser.add_argument("--backup-manager", action="store_true", help="Run backup manager without Main Window")
+    parser.add_argument("input", help="Path to the input files", nargs="*", action="append", default=[])
     args = parser.parse_args()
 
+    # Flatten the list of lists
+    if args.input is not None and len(args.input) > 0:
+        args.input = [item for sublist in args.input for item in sublist]
+
     setup_logging(args)
-    run_gui()
+    run_gui(args.backup_manager, args.input)
 
 if __name__ == '__main__':
     main()

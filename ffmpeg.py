@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import errno
+
 #
 # @file ffmpeg.py
 # @date 23-02-2025
@@ -14,7 +14,7 @@ from typing import Optional, List, Callable, Any
 import shutil
 from result import Result, Ok, Err
 
-from utils import run
+from utils import run, pretty_errno
 
 # 02:27:57.535000000
 FFMPEG_DURATION_RE = re.compile(r'(?P<hours>\d+):(?P<minutes>\d+):(?P<seconds>\d+\.\d+)')
@@ -423,5 +423,4 @@ class FFMpegRemuxer:
         if process.returncode == 0:
             return Ok(None)
 
-
-        return Err(f'Failed to process file. Exit code: {process.returncode} ({process.returncode}): {stderr.strip()}')
+        return Err(f'Failed to process file. Exit code: {process.returncode} ({process.returncode} - {pretty_errno(process.returncode)}): {stderr.strip()}')

@@ -91,12 +91,16 @@ def pretty_size(size: int) -> str:
     else:
         return f'{size / 1024 / 1024 / 1024:.2f} GB'
 
+def pretty_errno(errno: int) -> str:
+    if errno == 0:
+        return "success"
+    return os.strerror(errno)
+
 class ETACalculator:
     def __init__(self, start_time: float, start_percent: float):
         self.reset(start_time, start_percent)
 
     def reset(self, start_time: float, start_percent: float):
-        """Reset the calculator to the initial state."""
         self.start_time = start_time
         self.prev_time = start_time
         self.percent = start_percent
@@ -104,7 +108,6 @@ class ETACalculator:
         self.eta = 0
 
     def feed(self, percent: float):
-        """Update progress and recalculate ETA."""
         current_time = time.time()
         time_diff = current_time - self.prev_time
 
@@ -122,10 +125,8 @@ class ETACalculator:
                 # Smooth ETA using an exponential moving average
                 self.eta = 0.9 * self.eta + 0.1 * new_eta
 
-        # Update previous values
         self.prev_time = current_time
         self.prev_percent = percent
 
     def get(self) -> float:
-        """Return the estimated time remaining in seconds."""
         return self.eta

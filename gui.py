@@ -8,19 +8,24 @@
 
 import logging
 import os
+import shutil
 import time
+from typing import List
+
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtGui import QIcon
+from PyQt5.QtWidgets import QAction
 
-from backup_manager import BackupManager
+from __version__ import __version__
 from ffmpeg import find_ffmpeg, find_ffprobe, get_supported_hevc_codecs, \
     VideoTrack, AudioTrack, SubtitleTrack, Codec
-from mkv_file import MKVFile
+from container import Container
 from preferences import prefer_hevc_codec
 from utils import get_gpu_name, ETACalculator, pretty_duration, pretty_size
 
 logger = logging.getLogger(__name__)
 
+ADD_DIRECTORY_REC_ICON = "icons/folder-directory.svg"
 RESTORE_ICON = "icons/time-past.svg"
 BACKUP_MANAGER_ICON = "icons/copy-alt.svg"
 KEEP_ALL_ICON = "icons/border-all.svg"
@@ -35,6 +40,7 @@ REMOVE_ICON = "icons/trash.svg"
 AUDIO_FILTER_ICON = "icons/waveform-path.svg"
 BATCH_ENCODING_OPTIONS_ICON = "icons/settings.svg"
 APP_ICON = "icons/scissors.svg"
+RESTORE_ALL_ICON = "icons/trash-restore.svg"
 
 TYPE_ALIASES = {
     VideoTrack: 'Video',
@@ -67,9 +73,16 @@ STATUS_COLORS = {
     'error': '#FEEFC3'
 }
 
-def file_track_summary(mkvfile: MKVFile) -> str:
+ALLOWED_EXTENSIONS = [
+    ('.mkv', 'Matroska Video File'),
+    ('.webm', 'WebM Video File'),
+    ('.mp4', 'MPEG-4 Video File'),
+    ('.mov', 'QuickTime Movie'),
+]
+
+def file_track_summary(container: Container) -> str:
     d = {}
-    for track in mkvfile.tracks:
+    for track in container.tracks:
         if not track.keep:
             continue
 
@@ -205,6 +218,208 @@ class BatchEncodingOptionsDialog(QtWidgets.QDialog):
 
         super().accept()
 
+class BackupManager(QtWidgets.QDialog):
+    def __init__(self, start_files: List[str] = None):
+        super().__init__()
+        self.setAcceptDrops(True)
+        self.init_ui()
+        self.files = []
+
+        for file in start_files or []:
+            self.open_file(file)
+
+    def get_nobak(self, file):
+        return file.split('.bak')[0]
+
+    def open_file(self, file):
+        if not ".bak" in file:
+            return
+
+        nobak = self.get_nobak(file)
+        if not os.path.exists(nobak):
+            logger.warning('File %s does not exist', nobak)
+            return
+
+        self.files.append(file)
+        self.files_count_changed()
+
+        self.files_table.setRowCount(len(self.files))
+        self.files_table.setItem(len(self.files) - 1, 0, QtWidgets.QTableWidgetItem(nobak))
+        self.files_table.setItem(len(self.files) - 1, 1, QtWidgets.QTableWidgetItem(file))
+        self.files_table.setItem(len(self.files) - 1, 2, QtWidgets.QTableWidgetItem(time.strftime('%d-%m-%Y %H:%M:%S', time.gmtime(os.path.getmtime(file)))))
+        self.files_table.setItem(len(self.files) - 1, 3, QtWidgets.QTableWidgetItem(pretty_size(os.path.getsize(nobak))))
+        self.files_table.setItem(len(self.files) - 1, 4, QtWidgets.QTableWidgetItem(pretty_size(os.path.getsize(file))))
+
+    def restore_file(self, file):
+        nobak = self.get_nobak(file)
+        logger.info("copy %s to %s", file, nobak)
+        shutil.copy(file, nobak)
+        logger.info("remove %s", file)
+        os.remove(file)
+
+    def remove_file(self, file):
+        logger.info("remove %s", file)
+        os.remove(file)
+
+    def open_directory(self, directory, recursive=False):
+        # Don't use os.walk() here, it's too slow
+        try:
+            for any in os.listdir(directory):
+                path = os.path.join(directory, any)
+                if os.path.isdir(path):
+                    if recursive:
+                        self.open_directory(path, True)
+                else:
+                    self.open_file(path)
+        except Exception as e:
+            logger.error('Failed to open directory %s: %s', directory, e)
+
+    def files_count_changed(self):
+        any_files = len(self.files) != 0
+        self.remove_all_action.setEnabled(any_files)
+        self.restore_all_action.setEnabled(any_files)
+
+    def selection_changed(self):
+        if self.files_table.currentRow() == -1:
+            self.remove_selected_action.setEnabled(False)
+            self.restore_selected_action.setEnabled(False)
+        else:
+            self.remove_selected_action.setEnabled(True)
+            self.restore_selected_action.setEnabled(True)
+
+    # Process dropped files
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            logger.debug('Accepting drop event')
+            event.accept()
+        else:
+            logger.debug('Ignoring drop event')
+            event.ignore()
+
+    def dropEvent(self, event):
+        logger.debug('Dropped files: %s', event.mimeData().urls())
+        for url in event.mimeData().urls():
+            if url.isLocalFile():
+                if os.path.isdir(url.toLocalFile()):
+                    self.open_directory(url.toLocalFile(), True)
+                else:
+                    self.open_file(url.toLocalFile())
+
+    def add_files(self):
+        dialog = QtWidgets.QFileDialog()
+        dialog.setFileMode(QtWidgets.QFileDialog.ExistingFiles)
+        dialog.setNameFilter('Backup files (*.bak*);;All files (*)')
+        if dialog.exec_():
+            for file in dialog.selectedFiles():
+                self.open_file(file)
+
+    def add_directory(self):
+        dialog = QtWidgets.QFileDialog()
+        dialog.setFileMode(QtWidgets.QFileDialog.Directory)
+        if dialog.exec_():
+            for directory in dialog.selectedFiles():
+                self.open_directory(directory)
+
+    def add_directory_recursively(self):
+        dialog = QtWidgets.QFileDialog()
+        dialog.setFileMode(QtWidgets.QFileDialog.Directory)
+        if dialog.exec_():
+            for directory in dialog.selectedFiles():
+                self.open_directory(directory, True)
+
+    def remove_bak(self):
+        index = self.files_table.currentRow()
+        if index < 0:
+            return
+
+        file = self.files[index]
+        self.files_table.removeRow(index)
+        self.files.remove(file)
+        self.files_count_changed()
+
+    def restore_all_bak(self):
+        for file in self.files:
+            self.restore_file(file)
+        self.files_table.setRowCount(0)
+        self.files = []
+        self.files_count_changed()
+
+    def restore_bak(self):
+        index = self.files_table.currentRow()
+        if index < 0:
+            return
+
+        file = self.files[index]
+        self.restore_file(file)
+        self.files_table.removeRow(index)
+        self.files.remove(file)
+        self.files_count_changed()
+
+    def remove_all_bak(self):
+        for file in self.files:
+            self.remove_file(file)
+        self.files_table.setRowCount(0)
+        self.files = []
+        self.files_count_changed()
+
+    def init_ui(self):
+        self.setWindowTitle('Backup Manager')
+        self.setBaseSize(1600, 1000)
+
+        layout = QtWidgets.QVBoxLayout()
+        self.setLayout(layout)
+
+        toolbar = QtWidgets.QToolBar()
+        toolbar.setMovable(False)
+        toolbar.setFloatable(False)
+        toolbar.setOrientation(QtCore.Qt.Horizontal)
+        toolbar.setIconSize(QtCore.QSize(32, 32))
+        toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
+        layout.addWidget(toolbar)
+        toolbar.addAction(QIcon(ADD_FILES_ICON), 'Add files', self.add_files)
+        toolbar.addAction(QIcon(ADD_DIRECTORY_ICON), 'Add directory', self.add_files)
+        toolbar.addAction(QIcon(ADD_DIRECTORY_REC_ICON), 'Add directory\nrecursively', self.add_files)
+        toolbar.addSeparator()
+
+        self.remove_selected_action = QAction(QIcon(REMOVE_ICON), 'Remove\nselected', toolbar)
+        self.remove_selected_action.setEnabled(False)
+        self.remove_selected_action.triggered.connect(self.remove_bak)
+        toolbar.addAction(self.remove_selected_action)
+
+        self.restore_selected_action = QAction(QIcon(RESTORE_ICON), 'Restore\nselected', toolbar)
+        self.restore_selected_action.setEnabled(False)
+        self.restore_selected_action.triggered.connect(self.restore_bak)
+        toolbar.addAction(self.restore_selected_action)
+
+        toolbar.addSeparator()
+
+        self.remove_all_action = QAction(QIcon(REMOVE_ALL_ICON), 'Remove all', toolbar)
+        self.remove_all_action.setEnabled(False)
+        self.remove_all_action.triggered.connect(self.remove_all_bak)
+        toolbar.addAction(self.remove_all_action)
+
+        self.restore_all_action = QAction(QIcon(RESTORE_ALL_ICON), 'Restore all', toolbar)
+        self.restore_all_action.setEnabled(False)
+        self.restore_all_action.triggered.connect(self.restore_all_bak)
+        toolbar.addAction(self.restore_all_action)
+
+        self.files_table = QtWidgets.QTableWidget()
+        self.files_table.setColumnCount(5)
+        self.files_table.setHorizontalHeaderLabels(
+            ['File', 'Backup', 'Date', 'File size', 'Backup size'])
+        self.files_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        self.files_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+        self.files_table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
+        self.files_table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeToContents)
+        self.files_table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeToContents)
+        self.files_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.files_table.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.files_table.itemSelectionChanged.connect(self.selection_changed)
+        layout.addWidget(self.files_table)
+
+        self.show()
+
+
 class GUI(QtWidgets.QMainWindow):
     def popup_error(self, message: str):
         QtWidgets.QMessageBox.critical(self, 'Error', message)
@@ -258,6 +473,7 @@ class GUI(QtWidgets.QMainWindow):
                 self.open_file(file)
             self.update_files_table()
 
+        self.files_count_changed()
         self.setAcceptDrops(True)
 
     # Process dropped files
@@ -282,9 +498,9 @@ class GUI(QtWidgets.QMainWindow):
                 return
 
         logger.info('Opening file: %s', file)
-        mkvfile = MKVFile(file, self.preferred_codec)
+        container = Container(file, self.preferred_codec)
         try:
-            if (res := mkvfile.parse(self.ffprobe)).is_err():
+            if (res := container.parse(self.ffprobe)).is_err():
                 self.popup_error(f'Failed to parse file {file}: {res.unwrap_err()}')
                 return
         except Exception as e:
@@ -292,47 +508,48 @@ class GUI(QtWidgets.QMainWindow):
             logger.exception('Error parsing file %s: %s', file, e)
             return
 
-        self.files.append(mkvfile)
+        self.files.append(container)
+        self.files_count_changed()
 
     def update_files_table(self):
         self.files_table.setRowCount(len(self.files))
-        for i, mkvfile in enumerate(self.files):
-            self.files_table.setItem(i, 0, CustomTableWidgetItem(os.path.basename(mkvfile.file), mkvfile))
+        for i, container in enumerate(self.files):
+            self.files_table.setItem(i, 0, CustomTableWidgetItem(os.path.basename(container.file), container))
 
             codec_select = QtWidgets.QComboBox()
             for codec in self.supported_codecs:
                 codec_select.addItem(codec.name, codec)
-            codec_select.setCurrentText(mkvfile.codec.name)
+            codec_select.setCurrentText(container.codec.name)
             self.files_table.setCellWidget(i, 1, codec_select)
 
             preset_select = QtWidgets.QComboBox()
-            preset_select.addItems(mkvfile.codec.presets)
-            preset_select.setCurrentText(mkvfile.preset)
-            def update_preset(preset, f=mkvfile):
+            preset_select.addItems(container.codec.presets)
+            preset_select.setCurrentText(container.preset)
+            def update_preset(preset, f=container):
                 f.preset = preset
                 self.on_file_selected()
             preset_select.currentTextChanged.connect(update_preset)
             self.files_table.setCellWidget(i, 2, preset_select)
 
             tune_select = QtWidgets.QComboBox()
-            tune_select.addItems(mkvfile.codec.tunes)
-            tune_select.setCurrentText(mkvfile.tune)
-            def update_tune(tune, f=mkvfile):
+            tune_select.addItems(container.codec.tunes)
+            tune_select.setCurrentText(container.tune)
+            def update_tune(tune, f=container):
                 f.tune = tune
                 self.on_file_selected()
             tune_select.currentTextChanged.connect(update_tune)
             self.files_table.setCellWidget(i, 3, tune_select)
 
             profile_select = QtWidgets.QComboBox()
-            profile_select.addItems(mkvfile.codec.profiles)
-            profile_select.setCurrentText(mkvfile.profile)
-            def update_profile(profile, f=mkvfile):
+            profile_select.addItems(container.codec.profiles)
+            profile_select.setCurrentText(container.profile)
+            def update_profile(profile, f=container):
                 f.profile = profile
                 self.on_file_selected()
             profile_select.currentTextChanged.connect(update_profile)
             self.files_table.setCellWidget(i, 4, profile_select)
 
-            def update_codec(codec_name, f=mkvfile, codec_select=codec_select, preset_select=preset_select, tune_select=tune_select, profile_select=profile_select):
+            def update_codec(codec_name, f=container, codec_select=codec_select, preset_select=preset_select, tune_select=tune_select, profile_select=profile_select):
                 codec = next((c for c in self.supported_codecs if c.name == codec_name), None)
 
                 f.codec = codec
@@ -355,8 +572,8 @@ class GUI(QtWidgets.QMainWindow):
                 self.on_file_selected()
             codec_select.currentTextChanged.connect(update_codec)
 
-            self.files_table.setItem(i, 5, QtWidgets.QTableWidgetItem(pretty_duration(mkvfile.duration_seconds)))
-            self.files_table.setItem(i, 6, QtWidgets.QTableWidgetItem(file_track_summary(mkvfile)))
+            self.files_table.setItem(i, 5, QtWidgets.QTableWidgetItem(pretty_duration(container.duration_seconds)))
+            self.files_table.setItem(i, 6, QtWidgets.QTableWidgetItem(file_track_summary(container)))
 
     def on_file_selected(self):
         index = self.files_table.currentRow()
@@ -364,31 +581,34 @@ class GUI(QtWidgets.QMainWindow):
             # Clear metadata and tracks
             self.file_metadata.clear()
             self.file_tracks.setRowCount(0)
+            self.remove_selected_action.setEnabled(False)
             return
 
-        mkvfile = self.files_table.item(index, 0).custom_data
+        self.remove_selected_action.setEnabled(True)
+
+        container = self.files_table.item(index, 0).custom_data
 
         # Fill metadata
         self.file_metadata.clear()
         data = {
-            'File': f'"{mkvfile.file}"',
-            'Duration': f'{pretty_duration(mkvfile.duration_seconds)} ({mkvfile.duration_frames} frames)',
-            'File size': pretty_size(os.path.getsize(mkvfile.file)),
+            'File': f'"{container.file}"',
+            'Duration': f'{pretty_duration(container.duration_seconds)} ({container.duration_frames} frames)',
+            'File size': pretty_size(os.path.getsize(container.file)),
             'Video':
-                'is H.265: ' + ('yes' if any(track.is_h265() for track in mkvfile.tracks if track.keep and isinstance(track, VideoTrack)) else 'no') + \
-                f', codec: "{mkvfile.codec.name}", preset: "{mkvfile.preset}", tune: "{mkvfile.tune}", profile: "{mkvfile.profile}"'
+                'is H.265: ' + ('yes' if any(track.is_h265() for track in container.tracks if track.keep and isinstance(track, VideoTrack)) else 'no') + \
+                f', codec: "{container.codec.name}", preset: "{container.preset}", tune: "{container.tune}", profile: "{container.profile}"'
         }
         self.file_metadata.setText('\n'.join([f'{k}: {v}' for k, v in data.items()]))
 
         language_colors = {}
-        for i, track in enumerate(mkvfile.tracks):
+        for i, track in enumerate(container.tracks):
             language = track.language
             if language not in language_colors:
                 language_colors[language] = LANGUAGE_COLORS[len(language_colors) % len(LANGUAGE_COLORS)]
 
         # Fill tracks
-        self.file_tracks.setRowCount(len(mkvfile.tracks))
-        for i, track in enumerate(mkvfile.tracks):
+        self.file_tracks.setRowCount(len(container.tracks))
+        for i, track in enumerate(container.tracks):
             keep_checkbox = QtWidgets.QCheckBox()
             keep_checkbox.setChecked(track.keep)
             def update(state, t=track):
@@ -421,7 +641,18 @@ class GUI(QtWidgets.QMainWindow):
         logger.info('Add files')
         dialog = QtWidgets.QFileDialog()
         dialog.setFileMode(QtWidgets.QFileDialog.ExistingFiles)
-        dialog.setNameFilter('MKV files (*.mkv)')
+
+        filter = ''
+        for extension, description in ALLOWED_EXTENSIONS:
+            filter += f'{description} (*{extension});;'
+
+        # Any video file
+        filter += 'All video files (' + ' '.join([f'*{extension} ' for extension, _ in ALLOWED_EXTENSIONS]) + ')' + ';;'
+
+        # Any file
+        filter += 'All files (*)'
+
+        dialog.setNameFilter(filter)
         if dialog.exec_():
             files = dialog.selectedFiles()
             for file in files:
@@ -436,22 +667,37 @@ class GUI(QtWidgets.QMainWindow):
             directory = dialog.selectedFiles()[0]
             for root, _, files in os.walk(directory):
                 for file in files:
-                    if file.endswith('.mkv'):
+                    if any(file.endswith(extension) for extension, _ in ALLOWED_EXTENSIONS):
                         self.open_file(os.path.join(root, file))
             self.update_files_table()
 
+    def files_count_changed(self):
+        any_file = len(self.files) != 0
+        self.remove_all_action.setEnabled(any_file)
+        self.audio_filter_action.setEnabled(any_file)
+        self.video_filter_action.setEnabled(any_file)
+        self.subtitle_filter_action.setEnabled(any_file)
+        self.keep_all_action.setEnabled(any_file)
+        self.keep_none_action.setEnabled(any_file)
+        self.batch_encoding_options_action.setEnabled(any_file)
+        self.process_action.setEnabled(any_file)
+
     def remove_selected(self):
         logger.info('Remove selected')
+        self.files.remove(self.files_table.item(self.files_table.currentRow(), 0).custom_data)
         self.files_table.removeRow(self.files_table.currentRow())
+        self.files_count_changed()
 
     def remove_all(self):
         logger.info('Remove all')
+        self.files = []
         self.files_table.setRowCount(0)
+        self.files_count_changed()
 
     def filter(self, filters: list[str], t: type):
         logger.info('Filters: %s', filters)
-        for mkvfile in self.files:
-            for track in mkvfile.tracks:
+        for container in self.files:
+            for track in container.tracks:
                 if isinstance(track, t):
                     track.keep = False
                     for filter in filters:
@@ -490,16 +736,16 @@ class GUI(QtWidgets.QMainWindow):
 
     def keep_all(self):
         logger.info('Keep all')
-        for mkvfile in self.files:
-            for track in mkvfile.tracks:
+        for container in self.files:
+            for track in container.tracks:
                 track.keep = True
         self.update_files_table()
         self.on_file_selected()
 
     def keep_none(self):
         logger.info('Keep none')
-        for mkvfile in self.files:
-            for track in mkvfile.tracks:
+        for container in self.files:
+            for track in container.tracks:
                 track.keep = False
         self.update_files_table()
         self.on_file_selected()
@@ -515,8 +761,8 @@ class GUI(QtWidgets.QMainWindow):
         dialog = BatchEncodingOptionsDialog(self.supported_codecs, codec)
         if dialog.exec_():
             def update_all(updater, value):
-                for mkvfile in self.files:
-                    updater(value, mkvfile)
+                for container in self.files:
+                    updater(value, container)
                 self.update_files_table()
                 self.on_file_selected()
 
@@ -550,7 +796,7 @@ class GUI(QtWidgets.QMainWindow):
             finished = QtCore.pyqtSignal()
             error_message = QtCore.pyqtSignal(str)
 
-            def __init__(self, files: list[MKVFile], ffmpeg: str):
+            def __init__(self, files: list[Container], ffmpeg: str):
                 super().__init__()
                 self.files = files
                 self.ffmpeg = ffmpeg
@@ -558,14 +804,14 @@ class GUI(QtWidgets.QMainWindow):
             def run(self):
                 logger.info('Processing %d files', len(self.files))
 
-                for i, mkvfile in enumerate(self.files):
+                for i, container in enumerate(self.files):
                     def on_progress(frame: int, fps: float, index=i):
                         self.ffmpeg_process.emit(index, frame, fps)
 
                     self.file_update.emit(i, 'working')
-                    if (res := mkvfile.remux(self.ffmpeg, on_progress)).is_err():
+                    if (res := container.remux(self.ffmpeg, on_progress)).is_err():
                         self.file_update.emit(i, 'error')
-                        self.error_message.emit(f'Failed to process file {mkvfile.file}: {res.unwrap_err()}')
+                        self.error_message.emit(f'Failed to process file {container.file}: {res.unwrap_err()}')
                     else:
                         self.file_update.emit(i, 'done')
 
@@ -573,7 +819,7 @@ class GUI(QtWidgets.QMainWindow):
                 self.finished.emit()
 
         class FileStatus:
-            def __init__(self, file: MKVFile):
+            def __init__(self, file: Container):
                 self.file = file
                 self.total_frames = file.duration_frames
                 self.start_time = time.time()
@@ -595,7 +841,7 @@ class GUI(QtWidgets.QMainWindow):
                 self.update_time = time.time()
 
         file_statuses = [
-            FileStatus(mkvfile) for mkvfile in self.files
+            FileStatus(container) for container in self.files
         ]
 
         self.overall_progress_label.setText('')
@@ -671,7 +917,7 @@ class GUI(QtWidgets.QMainWindow):
         self.processing_thread.start()
 
     def init_ui(self):
-        self.setWindowTitle('MKV Trimmer')
+        self.setWindowTitle(f'Trimmer v{__version__}')
         self.setBaseSize(1600, 1000)
 
         self.main_tabwidget = QtWidgets.QTabWidget()
@@ -691,18 +937,58 @@ class GUI(QtWidgets.QMainWindow):
             toolbar.addSeparator()
             toolbar.addAction(QIcon(ADD_FILES_ICON), 'Add files', lambda: self.add_files())
             toolbar.addAction(QIcon(ADD_DIRECTORY_ICON), 'Add directory', lambda: self.add_directory())
-            toolbar.addAction(QIcon(REMOVE_ICON), 'Remove\nselected', lambda: self.remove_selected())
-            toolbar.addAction(QIcon(REMOVE_ALL_ICON), 'Remove all', lambda: self.remove_all())
+
+            self.remove_selected_action = QAction(QIcon(REMOVE_ICON), 'Remove\nselected', toolbar)
+            self.remove_selected_action.triggered.connect(lambda: self.remove_selected())
+            self.remove_selected_action.setEnabled(False)
+            toolbar.addAction(self.remove_selected_action)
+
+            self.remove_all_action = QAction(QIcon(REMOVE_ALL_ICON), 'Remove all', toolbar)
+            self.remove_all_action.triggered.connect(lambda: self.remove_all())
+            self.remove_selected_action.setEnabled(False)
+            toolbar.addAction(self.remove_all_action)
+
             toolbar.addSeparator()
-            toolbar.addAction(QIcon(AUDIO_FILTER_ICON), 'Audio filter', lambda: self.audio_filter())
-            toolbar.addAction(QIcon(VIDEO_FILTER_ICON), 'Video filter', lambda: self.video_filter())
-            toolbar.addAction(QIcon(SUBTITLE_FILTER_ICON), 'Subtitle filter', lambda: self.subtitle_filter())
-            toolbar.addAction(QIcon(KEEP_ALL_ICON), 'Keep all\ntracks', lambda: self.keep_all())
-            toolbar.addAction(QIcon(KEEP_NONE_ICON), 'Keep none\ntracks', lambda: self.keep_none())
+
+            self.audio_filter_action = QAction(QIcon(AUDIO_FILTER_ICON), 'Audio filter', toolbar)
+            self.audio_filter_action.triggered.connect(lambda: self.audio_filter())
+            self.audio_filter_action.setEnabled(False)
+            toolbar.addAction(self.audio_filter_action)
+
+            self.video_filter_action = QAction(QIcon(VIDEO_FILTER_ICON), 'Video filter', toolbar)
+            self.video_filter_action.triggered.connect(lambda: self.video_filter())
+            self.video_filter_action.setEnabled(False)
+            toolbar.addAction(self.video_filter_action)
+
+            self.subtitle_filter_action = QAction(QIcon(SUBTITLE_FILTER_ICON), 'Subtitle filter', toolbar)
+            self.subtitle_filter_action.triggered.connect(lambda: self.subtitle_filter())
+            self.subtitle_filter_action.setEnabled(False)
+            toolbar.addAction(self.subtitle_filter_action)
+
+            self.keep_all_action = QAction(QIcon(KEEP_ALL_ICON), 'Keep all\ntracks', toolbar)
+            self.keep_all_action.triggered.connect(lambda: self.keep_all())
+            self.keep_all_action.setEnabled(False)
+            toolbar.addAction(self.keep_all_action)
+
+            self.keep_none_action = QAction(QIcon(KEEP_NONE_ICON), 'Keep none\ntracks', toolbar)
+            self.keep_none_action.triggered.connect(lambda: self.keep_none())
+            self.keep_none_action.setEnabled(False)
+            toolbar.addAction(self.keep_none_action)
+
             toolbar.addSeparator()
-            toolbar.addAction(QIcon(BATCH_ENCODING_OPTIONS_ICON), 'Batch codec\noptions', lambda: self.batch_encoding_options())
+
+            self.batch_encoding_options_action = QAction(QIcon(BATCH_ENCODING_OPTIONS_ICON), 'Batch codec\noptions', toolbar)
+            self.batch_encoding_options_action.triggered.connect(lambda: self.batch_encoding_options())
+            self.batch_encoding_options_action.setEnabled(False)
+            toolbar.addAction(self.batch_encoding_options_action)
+
             toolbar.addSeparator()
-            toolbar.addAction(QIcon(PROCESS_ICON), 'Process', lambda: self.process())
+
+            self.process_action = QAction(QIcon(PROCESS_ICON), 'Process', toolbar)
+            self.process_action.triggered.connect(lambda: self.process())
+            self.process_action.setEnabled(False)
+            toolbar.addAction(self.process_action)
+
             files_tab_layout.addWidget(toolbar)
 
             # Make horizontal splitter. Top - table, bottom - details
@@ -787,10 +1073,14 @@ class GUI(QtWidgets.QMainWindow):
 
         self.setCentralWidget(self.main_tabwidget)
 
-def run_gui():
+def run_gui(only_backup_manager: bool, start_files: List[str]):
     app = QtWidgets.QApplication([])
     app.setWindowIcon(QIcon(APP_ICON))
-    gui = GUI([])
+
+    if only_backup_manager:
+        gui = BackupManager(start_files)
+    else:
+        gui = GUI(start_files)
 
     gui.show()
     app.exec_()
