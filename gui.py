@@ -94,7 +94,7 @@ def file_track_summary(container: Container) -> str:
         t = type(track)
         d[t] = d.get(t, []) + [track.language]
 
-    return ', '.join([f'{TYPE_ALIASES[k]}: [{', '.join(v)}]' for k, v in d.items()])
+    return ', '.join([f'{TYPE_ALIASES[k]}: [{", ".join(v)}]' for k, v in d.items()])
 
 class CustomTableWidgetItem(QtWidgets.QTableWidgetItem):
     def __init__(self, text, custom_data):
