@@ -395,11 +395,13 @@ class FFMpegRemuxer:
                 break
             if line:
                 if (match := self.FFMPEG_PROCESSED_FRAMES_RE.match(line)) is not None:
-                    frame = int(match.group('frame'))
-                    updated = True
+                    new_frame = int(match.group('frame'))
+                    updated = updated or new_frame != frame
+                    frame = new_frame
                 if (match := self.FFMPEG_FPS_RE.match(line)) is not None:
-                    fps = float(match.group('fps'))
-                    updated = True
+                    new_fps = float(match.group('fps'))
+                    updated = updated or new_fps != fps
+                    fps = new_fps
 
                 if updated:
                     on_progress(frame, fps)
