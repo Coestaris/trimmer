@@ -387,6 +387,7 @@ class FFMpegRemuxer:
 
         frame = 0
         fps = 0
+        updated = True
         while True:
             # Print stdout
             line = process.stdout.readline()
@@ -395,9 +396,14 @@ class FFMpegRemuxer:
             if line:
                 if (match := self.FFMPEG_PROCESSED_FRAMES_RE.match(line)) is not None:
                     frame = int(match.group('frame'))
+                    updated = True
                 if (match := self.FFMPEG_FPS_RE.match(line)) is not None:
                     fps = float(match.group('fps'))
-                on_progress(frame, fps)
+                    updated = True
+
+                if updated:
+                    on_progress(frame, fps)
+                    updated = False
                 logger.debug(line.strip())
 
         # Read stderr
