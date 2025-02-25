@@ -14,7 +14,8 @@ import time
 from typing import List, Dict
 
 from PyQt5 import QtWidgets, QtCore, QtGui
-from PyQt5.QtGui import QIcon
+from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor
+from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import QAction
 
 if platform.system() == 'Windows':
@@ -66,9 +67,9 @@ class Colors:
         if Colors.is_dark:
             return {
                 # Dark-like colors
-                VideoTrack: '#2E7D32',
-                AudioTrack: '#F9A825',
-                SubtitleTrack: '#C62828'
+                VideoTrack: '#1c4d1e',
+                AudioTrack: '#856024',
+                SubtitleTrack: '#6b1414'
             }
         else:
             return {
@@ -82,9 +83,13 @@ class Colors:
     def get_language_colors() -> List[str]:
         if Colors.is_dark:
             return [
-                '#2E7D32', # Green
-                '#F9A825', # Yellow
-                '#C62828', # Red
+                '#1c4d1e', # Green
+                '#856024', # Brown
+                '#6b1414', # Red
+                '#424242', # Dark gray
+                '#455A64', # Blue
+                '#FAD2CF', # Pink
+                '#FEEFC3', # Yellow
                 '#F5F5F5', # Light gray
                 '#F8F8F8', # Lighter gray
                 '#F0F0F0', # Lightest gray
@@ -107,8 +112,8 @@ class Colors:
             return {
                 'pending': '#424242',
                 'working': '#455A64',
-                'done': '#2E7D32',
-                'error': '#C62828'
+                'done': '#1c4d1e',
+                'error': '#856024'
             }
         else:
             return {
@@ -117,6 +122,14 @@ class Colors:
                 'done': '#CEEAD6',
                 'error': '#FEEFC3'
             }
+
+    @staticmethod
+    def get_icon_color() -> str:
+        if Colors.is_dark:
+            # Dark dark gray
+            return '#424242'
+        else:
+            return '#000000'
 
 ALLOWED_EXTENSIONS = [
     ('.mkv', 'Matroska Video File'),
@@ -135,6 +148,14 @@ def file_track_summary(container: Container) -> str:
         d[t] = d.get(t, []) + [track.language]
 
     return ', '.join([f'{TYPE_ALIASES[k]}: [{", ".join(v)}]' for k, v in d.items()])
+
+def render_svg(icon: str, size: int, color: str) -> QtGui.QIcon:
+    img = QPixmap(icon)
+    qp = QPainter(img)
+    qp.setCompositionMode(QPainter.CompositionMode_SourceIn)
+    qp.fillRect(img.rect(), QColor(color))
+    qp.end()
+    return QIcon(img)
 
 class CustomTableWidgetItem(QtWidgets.QTableWidgetItem):
     def __init__(self, text, custom_data):
@@ -422,29 +443,29 @@ class BackupManager(QtWidgets.QDialog):
         toolbar.setIconSize(QtCore.QSize(32, 32))
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         layout.addWidget(toolbar)
-        toolbar.addAction(QIcon(ADD_FILES_ICON), 'Add files', self.add_files)
-        toolbar.addAction(QIcon(ADD_DIRECTORY_ICON), 'Add directory', self.add_files)
-        toolbar.addAction(QIcon(ADD_DIRECTORY_REC_ICON), 'Add directory\nrecursively', self.add_files)
+        toolbar.addAction(render_svg(ADD_FILES_ICON, 32, Colors.get_icon_color()), 'Add files', self.add_files)
+        toolbar.addAction(render_svg(ADD_DIRECTORY_ICON, 32, Colors.get_icon_color()), 'Add directory', self.add_files)
+        toolbar.addAction(render_svg(ADD_DIRECTORY_REC_ICON, 32, Colors.get_icon_color()), 'Add directory\nrecursively', self.add_files)
         toolbar.addSeparator()
 
-        self.remove_selected_action = QAction(QIcon(REMOVE_ICON), 'Remove\nselected', toolbar)
+        self.remove_selected_action = QAction(render_svg(REMOVE_ICON, 32, Colors.get_icon_color()), 'Remove\nselected', toolbar)
         self.remove_selected_action.setEnabled(False)
         self.remove_selected_action.triggered.connect(self.remove_bak)
         toolbar.addAction(self.remove_selected_action)
 
-        self.restore_selected_action = QAction(QIcon(RESTORE_ICON), 'Restore\nselected', toolbar)
+        self.restore_selected_action = QAction(render_svg(RESTORE_ICON, 32, Colors.get_icon_color()), 'Restore\nselected', toolbar)
         self.restore_selected_action.setEnabled(False)
         self.restore_selected_action.triggered.connect(self.restore_bak)
         toolbar.addAction(self.restore_selected_action)
 
         toolbar.addSeparator()
 
-        self.remove_all_action = QAction(QIcon(REMOVE_ALL_ICON), 'Remove all', toolbar)
+        self.remove_all_action = QAction(render_svg(REMOVE_ALL_ICON, 32, Colors.get_icon_color()), 'Remove all', toolbar)
         self.remove_all_action.setEnabled(False)
         self.remove_all_action.triggered.connect(self.remove_all_bak)
         toolbar.addAction(self.remove_all_action)
 
-        self.restore_all_action = QAction(QIcon(RESTORE_ALL_ICON), 'Restore all', toolbar)
+        self.restore_all_action = QAction(render_svg(RESTORE_ALL_ICON, 32, Colors.get_icon_color()), 'Restore all', toolbar)
         self.restore_all_action.setEnabled(False)
         self.restore_all_action.triggered.connect(self.restore_all_bak)
         toolbar.addAction(self.restore_all_action)
@@ -765,19 +786,19 @@ class GUI(QtWidgets.QMainWindow):
 
     def audio_filter(self):
         logger.info('Audio filter')
-        filter = FilterDialog(QIcon(AUDIO_FILTER_ICON), 'Audio filter')
+        filter = FilterDialog(render_svg(AUDIO_FILTER_ICON, 32, Colors.get_icon_color()), 'Audio filter')
         if filter.exec_():
             self.filter(filter.filters, AudioTrack)
 
     def video_filter(self):
         logger.info('Video filter')
-        filter = FilterDialog(QIcon(VIDEO_FILTER_ICON), 'Video filter')
+        filter = FilterDialog(render_svg(VIDEO_FILTER_ICON, 32, Colors.get_icon_color()), 'Video filter')
         if filter.exec_():
             self.filter(filter.filters, VideoTrack)
 
     def subtitle_filter(self):
         logger.info('Subtitle filter')
-        filter = FilterDialog(QIcon(SUBTITLE_FILTER_ICON), 'Audio filter')
+        filter = FilterDialog(render_svg(SUBTITLE_FILTER_ICON, 32, Colors.get_icon_color()), 'Audio filter')
         if filter.exec_():
             self.filter(filter.filters, SubtitleTrack)
 
@@ -991,58 +1012,58 @@ class GUI(QtWidgets.QMainWindow):
             toolbar.setOrientation(QtCore.Qt.Horizontal)
             toolbar.setIconSize(QtCore.QSize(32, 32))
             toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-            toolbar.addAction(QIcon(BACKUP_MANAGER_ICON), 'Backup\nmanager', lambda: self.backup_manager())
+            toolbar.addAction(render_svg(BACKUP_MANAGER_ICON, 32, Colors.get_icon_color()), 'Backup\nmanager', lambda: self.backup_manager())
             toolbar.addSeparator()
-            toolbar.addAction(QIcon(ADD_FILES_ICON), 'Add files', lambda: self.add_files())
-            toolbar.addAction(QIcon(ADD_DIRECTORY_ICON), 'Add directory', lambda: self.add_directory())
+            toolbar.addAction(render_svg(ADD_FILES_ICON, 32, Colors.get_icon_color()), 'Add files', lambda: self.add_files())
+            toolbar.addAction(render_svg(ADD_DIRECTORY_ICON, 32, Colors.get_icon_color()), 'Add directory', lambda: self.add_directory())
 
-            self.remove_selected_action = QAction(QIcon(REMOVE_ICON), 'Remove\nselected', toolbar)
+            self.remove_selected_action = QAction(render_svg(REMOVE_ICON, 32, Colors.get_icon_color()), 'Remove\nselected', toolbar)
             self.remove_selected_action.triggered.connect(lambda: self.remove_selected())
             self.remove_selected_action.setEnabled(False)
             toolbar.addAction(self.remove_selected_action)
 
-            self.remove_all_action = QAction(QIcon(REMOVE_ALL_ICON), 'Remove all', toolbar)
+            self.remove_all_action = QAction(render_svg(REMOVE_ALL_ICON, 32, Colors.get_icon_color()), 'Remove all', toolbar)
             self.remove_all_action.triggered.connect(lambda: self.remove_all())
             self.remove_selected_action.setEnabled(False)
             toolbar.addAction(self.remove_all_action)
 
             toolbar.addSeparator()
 
-            self.audio_filter_action = QAction(QIcon(AUDIO_FILTER_ICON), 'Audio filter', toolbar)
+            self.audio_filter_action = QAction(render_svg(AUDIO_FILTER_ICON, 32, Colors.get_icon_color()), 'Audio filter', toolbar)
             self.audio_filter_action.triggered.connect(lambda: self.audio_filter())
             self.audio_filter_action.setEnabled(False)
             toolbar.addAction(self.audio_filter_action)
 
-            self.video_filter_action = QAction(QIcon(VIDEO_FILTER_ICON), 'Video filter', toolbar)
+            self.video_filter_action = QAction(render_svg(VIDEO_FILTER_ICON, 32, Colors.get_icon_color()), 'Video filter', toolbar)
             self.video_filter_action.triggered.connect(lambda: self.video_filter())
             self.video_filter_action.setEnabled(False)
             toolbar.addAction(self.video_filter_action)
 
-            self.subtitle_filter_action = QAction(QIcon(SUBTITLE_FILTER_ICON), 'Subtitle filter', toolbar)
+            self.subtitle_filter_action = QAction(render_svg(SUBTITLE_FILTER_ICON, 32, Colors.get_icon_color()), 'Subtitle filter', toolbar)
             self.subtitle_filter_action.triggered.connect(lambda: self.subtitle_filter())
             self.subtitle_filter_action.setEnabled(False)
             toolbar.addAction(self.subtitle_filter_action)
 
-            self.keep_all_action = QAction(QIcon(KEEP_ALL_ICON), 'Keep all\ntracks', toolbar)
+            self.keep_all_action = QAction(render_svg(KEEP_ALL_ICON, 32, Colors.get_icon_color()), 'Keep all\ntracks', toolbar)
             self.keep_all_action.triggered.connect(lambda: self.keep_all())
             self.keep_all_action.setEnabled(False)
             toolbar.addAction(self.keep_all_action)
 
-            self.keep_none_action = QAction(QIcon(KEEP_NONE_ICON), 'Keep none\ntracks', toolbar)
+            self.keep_none_action = QAction(render_svg(KEEP_NONE_ICON, 32, Colors.get_icon_color()), 'Keep none\ntracks', toolbar)
             self.keep_none_action.triggered.connect(lambda: self.keep_none())
             self.keep_none_action.setEnabled(False)
             toolbar.addAction(self.keep_none_action)
 
             toolbar.addSeparator()
 
-            self.batch_encoding_options_action = QAction(QIcon(BATCH_ENCODING_OPTIONS_ICON), 'Batch codec\noptions', toolbar)
+            self.batch_encoding_options_action = QAction(render_svg(BATCH_ENCODING_OPTIONS_ICON, 32, Colors.get_icon_color()), 'Batch codec\noptions', toolbar)
             self.batch_encoding_options_action.triggered.connect(lambda: self.batch_encoding_options())
             self.batch_encoding_options_action.setEnabled(False)
             toolbar.addAction(self.batch_encoding_options_action)
 
             toolbar.addSeparator()
 
-            self.process_action = QAction(QIcon(PROCESS_ICON), 'Process', toolbar)
+            self.process_action = QAction(render_svg(PROCESS_ICON, 32, Colors.get_icon_color()), 'Process', toolbar)
             self.process_action.triggered.connect(lambda: self.process())
             self.process_action.setEnabled(False)
             toolbar.addAction(self.process_action)
@@ -1164,9 +1185,9 @@ class GUI(QtWidgets.QMainWindow):
 
 def run_gui(only_backup_manager: bool, start_files: List[str]):
     app = QtWidgets.QApplication([])
-    app.setWindowIcon(QIcon(APP_ICON))
     Colors.set_dark_mode(app.palette().window().color().value() <
                          app.palette().windowText().color().value())
+    app.setWindowIcon(render_svg(APP_ICON, 32, Colors.get_icon_color()))
 
     if only_backup_manager:
         gui = BackupManager(start_files)
