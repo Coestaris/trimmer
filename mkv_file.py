@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from result import Result, Err, Ok
 
 #
 # @file mkv_file.py
@@ -6,21 +7,26 @@
 # @author Maxim Kurylko <kurylko.m@ajax.systems>
 #
 
-from ffmpeg import VideoTrack, get_video_tracks, FFMpegRemuxer
+from ffmpeg import VideoTrack, get_video_tracks, FFMpegRemuxer, Codec
 import logging
 import os
 import shutil
-from typing import Callable
+from typing import Callable, Any
 from utils import unique_bak_name
 
 logger = logging.getLogger(__name__)
 
 class MKVFile:
-    def __init__(self, file: str):
+    def __init__(self, file: str, codec: Codec):
         self.file = file
         self.tracks = []
         self.duration_frames = None
         self.duration_seconds = None
+
+        self.codec = codec
+        self.preset = codec.preferred_preset
+        self.tune = codec.preferred_tune
+        self.profile = codec.preferred_profile
 
     def __estimate_duration(self):
         durations_sec = []
@@ -54,27 +60,31 @@ class MKVFile:
         if duration_sec is None or frame_rate is None:
             self.duration_seconds = 0
             self.duration_frames = 0
+            self.fps = 0
         else:
             self.duration_seconds = duration_sec
             self.duration_frames = int(duration_sec * frame_rate)
+            self.fps = frame_rate
 
-    def parse(self, ffprobe: str) -> bool:
+    def parse(self, ffprobe: str) -> Result[Any, str]:
         self.tracks = get_video_tracks(ffprobe, self.file)
-        if self.tracks is None:
-            logger.error('Failed to get video tracks of file %s', self.file)
-            return False
+        if self.tracks.is_err():
+            return Err(f"Unable to get list of tracks: {self.tracks.unwrap_err()}")
+        self.tracks = self.tracks.unwrap()
+
         logger.debug('Tracks: %s', self.tracks)
 
         self.__estimate_duration()
         logger.debug('Duration in frames: %s', self.duration_frames)
-        pass
+        return Ok(None)
 
-    def remux(self,
-              ffmpeg: str,
-              preset: str,
-              encoder: str,
-              on_progress: Callable[[int, float], None]) -> bool:
+    def remux(self, ffmpeg: str, on_progress: Callable[[int, float], None]) -> Result[Any, str]:
         logger.debug('Processing file: %s', self.file)
+
+        # Imitate work
+        # import time
+        # time.sleep(5)
+        # return Ok(None)
 
         outfile = self.file + '.trimmed.mkv'
         logger.debug('Output file: %s', outfile)
@@ -87,17 +97,21 @@ class MKVFile:
             if isinstance(track, VideoTrack):
                 if not track.is_h265():
                     logger.debug('Converting video track %s to HEVC', track)
-                    ffmpeg.video_to_hevc(track, preset, encoder)
+                    ffmpeg.video_to_hevc(track, self.codec, self.preset, self.tune, self.profile)
                 else:
                     logger.debug('Keeping video track %s as is', track)
                     ffmpeg.video_as_is(track)
             if track.keep:
                 ffmpeg.keep_track(track)
 
-        if not ffmpeg.process(outfile, on_progress):
+        if (res := ffmpeg.process(outfile, on_progress)).is_err():
             logger.error('Failed to process file %s', self.file)
-            os.remove(outfile)
-            return False
+            try:
+                os.remove(outfile)
+            except Exception as e:
+                pass
+
+            return Err(f'Remuxer failed: {res.unwrap_err()}')
 
         logger.info('File %s processed successfully', self.file)
 
@@ -109,5 +123,5 @@ class MKVFile:
         # Replace original file with the trimmed one
         logger.info('Replacing original file with the trimmed one')
         shutil.move(outfile, self.file)
-        return True
+        return Ok(None)
 

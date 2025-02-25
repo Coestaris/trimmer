@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import errno
 #
 # @file ffmpeg.py
 # @date 23-02-2025
@@ -10,7 +10,9 @@ import json
 import re
 import subprocess
 import logging
-from typing import Optional, List, Callable
+from typing import Optional, List, Callable, Any
+import shutil
+from result import Result, Ok, Err
 
 from utils import run
 
@@ -21,42 +23,146 @@ FFMPEG_FRAME_RATE_RE = re.compile(r'(?P<dividend>\d+)/(?P<divisor>\d+)')
 
 logger = logging.getLogger(__name__)
 
-def find_ffmpeg() -> Optional[str]:
-    import shutil
-    return shutil.which('ffmpeg')
+# TODO: Maybe get this from ffmpeg?
+class Codec:
+    def __init__(self, name: str,
+                 presets: List[str],
+                 preferred_preset: str,
+                 tunes: List[str],
+                 preferred_tune: str,
+                 profiles: List[str],
+                 preferred_profile: str):
+        self.name = name
 
-def find_ffprobe() -> Optional[str]:
-    import shutil
-    return shutil.which('ffprobe')
+        self.presets = presets
+        self.preferred_preset = preferred_preset
 
-def get_supported_hevc_encoders(ffmpeg: str) -> Optional[List[str]]:
+        self.tunes = tunes
+        self.preferred_tune = preferred_tune
+
+        self.profiles = profiles
+        self.preferred_profile = preferred_profile
+
+LIBX265_CODEC = Codec(
+    'libx265',
+    [
+        'ultrafast',
+        'superfast',
+        'veryfast',
+        'faster',
+        'fast',
+        'medium' ,
+        'slow',
+        'slower',
+        'veryslow',
+        'placebo',
+    ],
+    'slow',
+    [
+        'psnr',
+        'ssim',
+        'grain',
+        'fastdecode',
+        'zerolatency',
+        'animation'
+    ],
+    'grain',
+    [
+        'main',
+        'main444-8',
+        'main10',
+        'main422-10',
+        'main444-10',
+        'main12',
+        'main422-12',
+        'main444-12',
+    ],
+    'main'
+)
+
+HEVC_NVENC_CODEC = Codec(
+    'hevc_nvenc',
+    [
+        'default',
+        'slow',  # hq 2 passes
+        'medium',  # hq 1 pass
+        'fast',  # hp 1 pass
+        'hp',
+        'hq',
+        'bd',
+        'll',  # low latency
+        'llhq',  # low latency hq
+        'llhp',  # low latency hp
+        'lossless',  # lossless
+        'losslesshp',  # lossless hp
+        'p1',  # fastest (lowest quality)
+        'p2',  # faster (lower quality)
+        'p3',  # fast (low quality)
+        'p4',  # medium (default)
+        'p5',  # slow (good quality)
+        'p6',  # slower (better quality)
+        'p7',  # slowest (best quality)
+     ],
+    'p6',
+    [
+        'hq', # High quality
+        'll', # Low latency
+        'ull', # Ultra low latency
+        'lossless', # Set the encoding profile (from 0 to 4) (default main)
+    ],
+    'hq',
+    [
+        'main',
+        'main10',
+        'rext',
+    ],
+    'main'
+)
+
+def find_ffmpeg() -> Result[str, str]:
+    ffmpeg = shutil.which('ffmpeg')
+    if ffmpeg is None:
+        return Err('ffmpeg not found')
+
+    return Ok(ffmpeg)
+
+def find_ffprobe() -> Result[str, str]:
+    ffprobe = shutil.which('ffprobe')
+    if ffprobe is None:
+        return Err('ffprobe not found')
+
+    return Ok(ffprobe)
+
+def get_supported_hevc_codecs(ffmpeg: str) -> Result[List[Codec], str]:
     args = [ffmpeg, '-hide_banner', '-encoders']
 
     code, result = run(args)
     if code != 0:
-        logger.error('Failed to get encoders: %s', result)
-        return None
+        return Err(f'Failed to get codecs: {result.strip()}')
 
-    encoders = []
+    known_codecs = [ LIBX265_CODEC, HEVC_NVENC_CODEC ]
+    codecs = []
     for line in result.split('\n'):
-        if 'hevc' in line or 'h265' in line:
-            encoders.append(line.split(' ')[2])
-    return encoders
+        for codec in known_codecs:
+            if codec.name in line:
+                codecs.append(codec)
+                break
 
-def get_video_duration_seconds(ffprobe: str, file: str) -> Optional[float]:
+    return Ok(codecs)
+
+def get_video_duration_seconds(ffprobe: str, file: str) -> Result[float, str]:
     args = [ffprobe, '-v', 'error', '-show_entries', 'format=duration',
          '-of', 'default=noprint_wrappers=1:nokey=1', file]
     code, result = run(args)
     if code != 0:
-        logger.error('Failed to get video duration: %s', result)
-        return None
+        return Err(f'Failed to get duration: {result.strip()}')
 
-    return float(result)
+    return Ok(float(result))
 
-def get_video_duration_frames(ffprobe: str, file: str) -> Optional[int]:
+def get_video_duration_frames(ffprobe: str, file: str) -> Result[int, str]:
     duration_sec = get_video_duration_seconds(ffprobe, file)
-    if duration_sec is None:
-        return None
+    if isinstance(duration_sec, Err):
+        return duration_sec
 
     # Using "count_frames" took too long, so just get the frame rate and duration
     args = [ffprobe, "-v", "error",
@@ -65,15 +171,14 @@ def get_video_duration_frames(ffprobe: str, file: str) -> Optional[int]:
         "-of", "csv=p=0", file]
     code, output = run(args)
     if code != 0:
-        logger.error('Failed to get frame rate: %s', output)
-        return None
+        return Err(f'Failed to get frame rate: {output.strip()}')
 
     # Let's not use 'eval' here...
     frame_rate = output.split('/')
     frame_rate = int(frame_rate[0]) / int(frame_rate[1])
 
-    logger.debug('Frame rate: %f, duration: %f', frame_rate, duration_sec)
-    return int(frame_rate * duration_sec)
+    logger.debug('Frame rate: %f, duration: %f', frame_rate, duration_sec.unwrap())
+    return Ok(int(frame_rate * duration_sec.unwrap()))
 
 class FFMpegTrack:
     def __init__(self, index: int, codec: str, language: str, title: str, duration: float):
@@ -96,7 +201,9 @@ class VideoTrack(FFMpegTrack):
         self.frame_rate = frame_rate
 
     def is_h265(self) -> bool:
-        return 'hevc' in self.codec or 'h265' in self.codec
+        # TODO: !!!
+        return False
+        # return 'hevc' in self.codec or 'h265' in self.codec
 
     def __str__(self):
         return f'VideoTrack({super().__str__()}, fps={self.frame_rate:.2f})'
@@ -116,7 +223,7 @@ class SubtitleTrack(FFMpegTrack):
     def __str__(self):
         return f'SubtitleTrack({super().__str__()})'
 
-def get_video_tracks(ffprobe: str, file: str) -> Optional[List['FFMpegTrack']]:
+def get_video_tracks(ffprobe: str, file: str) -> Result[List['FFMpegTrack'], str]:
     def duration_to_secs(duration: str) -> float:
         match = FFMPEG_DURATION_RE.match(duration)
         if match is None:
@@ -144,7 +251,7 @@ def get_video_tracks(ffprobe: str, file: str) -> Optional[List['FFMpegTrack']]:
             type: str,
             add_tags: str,
             add_entries: str,
-            parser: callable) -> Optional[List[FFMpegTrack]]:
+            parser: callable) -> Result[List[FFMpegTrack], str]:
 
         args = [
             ffprobe,
@@ -156,8 +263,7 @@ def get_video_tracks(ffprobe: str, file: str) -> Optional[List['FFMpegTrack']]:
         ]
         code, result = run(args)
         if code != 0:
-            logger.error('Failed to get tracks: %s', result)
-            return []
+            return Err(f'Failed to get {type} streams: {result.strip()}')
 
         tracks = []
         data = json.loads(result)
@@ -188,42 +294,45 @@ def get_video_tracks(ffprobe: str, file: str) -> Optional[List['FFMpegTrack']]:
 
             tracks.append(parser(index, codec, language, title, duration, stream))
 
-        return tracks
+        return Ok(tracks)
 
     tracks = []
-    if (res := process_streams(
+    res = process_streams(
             'V',
             '',
             'r_frame_rate,',
             lambda index, codec, language, title, duration, data: VideoTrack(
                 index, codec, language, title, duration,
-                frame_rate_to_float(data['r_frame_rate'])))) is None:
-        logger.error('Failed to get video tracks')
-        return None
-    tracks.extend(res)
+                frame_rate_to_float(data['r_frame_rate'])))
+    if res.is_err():
+        return res
+    tracks.extend(res.unwrap())
 
-    if (res := process_streams(
+    res = process_streams(
             'a',
             '',
             'channels,',
             lambda index, codec, language, title, duration, data: AudioTrack(
                 index, codec, language, title, duration,
-                data['channels']))) is None:
-        logger.error('Failed to get audio tracks')
-        return None
-    tracks.extend(res)
+                data['channels']))
+    if res.is_err():
+        return res
+    tracks.extend(res.unwrap())
 
-    if (res := process_streams(
+    res = process_streams(
             's',
             '',
             '',
             lambda index, codec, language, title, duration, _: SubtitleTrack(
-                index, codec, language, title, duration))) is None:
-        logger.error('Failed to get subtitle tracks')
-        return None
-    tracks.extend(res)
+                index, codec, language, title, duration))
+    if res.is_err():
+        return res
+    tracks.extend(res.unwrap())
 
-    return tracks
+    if len(tracks) == 0:
+        return Err('No tracks found')
+
+    return Ok(tracks)
 
 class FFMpegRemuxer:
     # frame=2567
@@ -246,8 +355,8 @@ class FFMpegRemuxer:
         self.args.extend(['-c:v', 'copy'])
         return self
 
-    def video_to_hevc(self, _: VideoTrack, preset: str, encoder: str) -> 'FFMpegRemuxer':
-        self.args.extend(['-c:v', encoder, '-preset', preset, '-vtag', 'hvc1'])
+    def video_to_hevc(self, _: VideoTrack, codec: Codec, preset: str, tune: str, profile: str) -> 'FFMpegRemuxer':
+        self.args.extend(['-c:v', codec.name, '-preset', preset, '-tune', tune, '-profile:v', profile, '-vtag', 'hvc1'])
         return self
 
     def keep_all_attachments(self) -> 'FFMpegRemuxer':
@@ -258,7 +367,7 @@ class FFMpegRemuxer:
         self.args.extend(['-map', f'0:{track.index}'])
         return self
 
-    def process(self, output_file: str, on_progress: Callable[[int, float], None]) -> bool:
+    def process(self, output_file: str, on_progress: Callable[[int, float], None]) -> Result[Any, str]:
         self.args.append(output_file)
 
         # Track progress
@@ -270,6 +379,7 @@ class FFMpegRemuxer:
         logger.debug('Running ffmpeg: [%s]', ' '.join(self.args))
         process = subprocess.Popen(self.args,
                                stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE,
                                universal_newlines=True,
                                encoding='utf-8',
                                bufsize=1)
@@ -289,25 +399,20 @@ class FFMpegRemuxer:
                 on_progress(frame, fps)
                 logger.debug(line.strip())
 
+        # Read stderr
+        stderr = ''
+        while True:
+            line = process.stderr.readline()
+            if line == '' and process.poll() is not None:
+                break
+            if line:
+                stderr += line
+                logger.debug(line.strip())
+
         process.wait()
 
-        return process.returncode == 0
+        if process.returncode == 0:
+            return Ok(None)
 
-def prefer_hevc_encoder(encoders: List[str], gpu_name: str) -> Optional[str]:
-    if 'nvidia' in gpu_name.lower():
-        for encoder in encoders:
-            if 'nvenc' in encoder:
-                return encoder
-    elif 'intel' in gpu_name.lower():
-        for encoder in encoders:
-            if 'qsv' in encoder:
-                return encoder
-    elif 'amd' in gpu_name.lower():
-        for encoder in encoders:
-            if 'amf' in encoder:
-                return encoder
 
-    if 'libx265' in encoders:
-        return 'libx265'
-
-    return None
+        return Err(f'Failed to process file. Exit code: {process.returncode} ({process.returncode}): {stderr.strip()}')

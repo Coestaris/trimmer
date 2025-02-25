@@ -49,10 +49,8 @@ def setup_logging(args):
 def main():
     parser = argparse.ArgumentParser(description='MKV Trimmer')
     parser.add_argument("--log-file", type=str, help="Log file")
-    parser.add_argument("-l", "--log", type=str, default="info",
-                        choices=["debug", "info", "warning", "error",
-                                 "critical"],
-                        help="Log level. Note: 'debug' log level may print sensitive information,\n"
+    parser.add_argument("-l", "--log", type=str, default="info", choices=["debug", "info", "warning", "error", "critical"],
+                        help="Log level. Note: 'debug' log level may print sensitive information,\n" 
                              "produce a lot of output and program may run slower/incorectly")
     parser.add_argument("--colorless", action="store_true",
                         help="Disable colored output")
