@@ -131,6 +131,7 @@ ALLOWED_EXTENSIONS = [
     ('.webm', 'WebM Video File'),
     ('.mp4', 'MPEG-4 Video File'),
     ('.mov', 'QuickTime Movie'),
+    ('.m2ts', 'Blu-ray BDAV Video File'),
 ]
 
 def file_track_summary(container: Container) -> str:
@@ -315,9 +316,13 @@ class BackupManager(QtWidgets.QDialog):
     def restore_file(self, file):
         nobak = self.get_nobak(file)
         logger.info("copy %s to %s", file, nobak)
-        shutil.copy(file, nobak)
-        logger.info("remove %s", file)
-        os.remove(file)
+
+        # Don't use copy, it's too slow
+        try:
+            os.remove(nobak)
+        except FileNotFoundError:
+            pass
+        os.rename(file, nobak)
 
     def remove_file(self, file):
         logger.info("remove %s", file)
