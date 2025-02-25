@@ -11,7 +11,7 @@ import os
 import platform
 import shutil
 import time
-from typing import List
+from typing import List, Dict
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtGui import QIcon
@@ -53,30 +53,70 @@ TYPE_ALIASES = {
     SubtitleTrack: 'Subtitle',
 }
 
-TYPE_COLORS = {
-    # Pale white-like colors
-    VideoTrack: '#CEEAD6',
-    AudioTrack: '#FEEFC3',
-    SubtitleTrack: '#FAD2CF'
-}
+class Colors:
+    is_dark = False
 
-LANGUAGE_COLORS = [
-    '#CEEAD6', # Green
-    '#D4E6F1', # Blue
-    '#E2E2E2', # Gray
-    '#FAD2CF', # Red
-    '#FEEFC3', # Yellow
-    '#F5F5F5', # Light gray
-    '#F8F8F8', # Lighter gray
-    '#F0F0F0', # Lightest gray
-]
+    @staticmethod
+    def set_dark_mode(dark: bool):
+        logger.info('Dark mode: %s', dark)
+        Colors.is_dark = dark
 
-STATUS_COLORS = {
-    'pending': '#F5F5F5',
-    'working': '#D4E6F1',
-    'done': '#CEEAD6',
-    'error': '#FEEFC3'
-}
+    @staticmethod
+    def get_type_colors() -> Dict[type, str]:
+        if Colors.is_dark:
+            return {
+                # Dark-like colors
+                VideoTrack: '#2E7D32',
+                AudioTrack: '#F9A825',
+                SubtitleTrack: '#C62828'
+            }
+        else:
+            return {
+                # Pale white-like colors
+                VideoTrack: '#CEEAD6',
+                AudioTrack: '#FEEFC3',
+                SubtitleTrack: '#FAD2CF'
+            }
+
+    @staticmethod
+    def get_language_colors() -> List[str]:
+        if Colors.is_dark:
+            return [
+                '#2E7D32', # Green
+                '#F9A825', # Yellow
+                '#C62828', # Red
+                '#F5F5F5', # Light gray
+                '#F8F8F8', # Lighter gray
+                '#F0F0F0', # Lightest gray
+            ]
+        else:
+            return [
+                '#CEEAD6', # Green
+                '#D4E6F1', # Blue
+                '#E2E2E2', # Gray
+                '#FAD2CF', # Red
+                '#FEEFC3', # Yellow
+                '#F5F5F5', # Light gray
+                '#F8F8F8', # Lighter gray
+                '#F0F0F0', # Lightest gray
+            ]
+
+    @staticmethod
+    def get_status_colors() -> Dict[str, str]:
+        if Colors.is_dark:
+            return {
+                'pending': '#424242',
+                'working': '#455A64',
+                'done': '#2E7D32',
+                'error': '#C62828'
+            }
+        else:
+            return {
+                'pending': '#F5F5F5',
+                'working': '#D4E6F1',
+                'done': '#CEEAD6',
+                'error': '#FEEFC3'
+            }
 
 ALLOWED_EXTENSIONS = [
     ('.mkv', 'Matroska Video File'),
@@ -607,10 +647,11 @@ class GUI(QtWidgets.QMainWindow):
         self.file_metadata.setText('\n'.join([f'{k}: {v}' for k, v in data.items()]))
 
         language_colors = {}
+        language_palette = Colors.get_language_colors()
         for i, track in enumerate(container.tracks):
             language = track.language
             if language not in language_colors:
-                language_colors[language] = LANGUAGE_COLORS[len(language_colors) % len(LANGUAGE_COLORS)]
+                language_colors[language] = language_palette[len(language_colors) % len(language_palette)]
 
         # Fill tracks
         self.file_tracks.setRowCount(len(container.tracks))
@@ -625,7 +666,7 @@ class GUI(QtWidgets.QMainWindow):
 
             self.file_tracks.setCellWidget(i, 0, keep_checkbox)
             self.file_tracks.setItem(i, 1, QtWidgets.QTableWidgetItem(TYPE_ALIASES[type(track)]))
-            self.file_tracks.item(i, 1).setBackground(QtGui.QColor(TYPE_COLORS[type(track)]))
+            self.file_tracks.item(i, 1).setBackground(QtGui.QColor(Colors.get_type_colors()[type(track)]))
             self.file_tracks.setItem(i, 2, QtWidgets.QTableWidgetItem(track.codec))
             self.file_tracks.setItem(i, 3, QtWidgets.QTableWidgetItem(track.language))
             self.file_tracks.item(i, 3).setBackground(QtGui.QColor(language_colors[track.language]))
@@ -881,7 +922,7 @@ class GUI(QtWidgets.QMainWindow):
         def update_file_status_with_gui(index, status):
             file_statuses[index].set_status(status)
             self.process_table.setItem(index, 1, QtWidgets.QTableWidgetItem(status))
-            self.process_table.item(index, 1).setBackground(QtGui.QColor(STATUS_COLORS[status]))
+            self.process_table.item(index, 1).setBackground(QtGui.QColor(Colors.get_status_colors()[status]))
             self.process_table.setItem(index, 2, QtWidgets.QTableWidgetItem(str(time.strftime('%d-%m-%Y %H:%M:%S'))))
             update_overall_progress()
 
@@ -1124,6 +1165,8 @@ class GUI(QtWidgets.QMainWindow):
 def run_gui(only_backup_manager: bool, start_files: List[str]):
     app = QtWidgets.QApplication([])
     app.setWindowIcon(QIcon(APP_ICON))
+    Colors.set_dark_mode(app.palette().window().color().value() <
+                         app.palette().windowText().color().value())
 
     if only_backup_manager:
         gui = BackupManager(start_files)
