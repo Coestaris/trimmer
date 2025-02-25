@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+
+#
+# @file __version__.py
+# @date 24-02-2025
+# @author Maxim Kurylko <vk_vm@ukr.net>
+#
+
 __version__ = "1.0.0"
 __author__ = "Maxim Kurylko <vk_vm@ukr.net>"
 __description__ = (

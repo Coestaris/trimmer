@@ -3,7 +3,7 @@
 #
 # @file container.py
 # @date 24-02-2025
-# @author Maxim Kurylko <kurylko.m@ajax.systems>
+# @author Maxim Kurylko <vk_vm@ukr.net>
 #
 
 from result import Result, Err, Ok
