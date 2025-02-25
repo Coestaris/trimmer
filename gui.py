@@ -122,6 +122,7 @@ class FilterDialog(QtWidgets.QDialog):
         dialog_buttons.accepted.connect(self.accept)
         dialog_buttons.rejected.connect(self.reject)
         layout.addWidget(dialog_buttons)
+        self.add_item()
 
 class BatchEncodingOptionsDialog(QtWidgets.QDialog):
     def __init__(self, codecs: list[Codec], preferred_codec: Codec):
