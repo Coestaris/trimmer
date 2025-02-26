@@ -231,7 +231,6 @@ class Container:
         ffmpeg.set_format_metadata(self.metadata)
         ffmpeg.audio_as_is()
         ffmpeg.subtitles_as_is()
-        ffmpeg.keep_all_attachments()
         for track in self.tracks:
             if isinstance(track, VideoTrack):
                 if not track.is_h265:

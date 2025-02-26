@@ -236,10 +236,6 @@ class FFMpegRemuxer:
         self.args.extend(['-c:v', codec.name, '-preset', preset, '-tune', tune, '-profile:v', profile, '-vtag', 'hvc1'])
         return self
 
-    def keep_all_attachments(self) -> 'FFMpegRemuxer':
-        self.args.extend(['-map', '0:t?'])
-        return self
-
     def keep_track(self, track: Track) -> 'FFMpegRemuxer':
         # Keep track and update title/language
         self.args.extend(['-map', f'0:{track.index}',
