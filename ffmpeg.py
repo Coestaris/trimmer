@@ -11,11 +11,12 @@ import platform
 import re
 import subprocess
 import logging
-from typing import Optional, List, Callable, Any
-import shutil
+from codec import Codec, KNOWN_CODECS
+from typing import Optional, List, Callable, Any, Dict
 from result import Result, Ok, Err
 import atexit
 
+from track import Track, VideoTrack, AudioTrack, SubtitleTrack
 from utils import run, pretty_errno
 
 # 02:27:57.535000000
@@ -25,147 +26,6 @@ FFMPEG_FRAME_RATE_RE = re.compile(r'(?P<dividend>\d+)/(?P<divisor>\d+)')
 
 logger = logging.getLogger(__name__)
 
-# TODO: Maybe get this from ffmpeg?
-# Actually there's ffmpeg -h encoder=<...> that can be used to get the
-# list of presets, tunes and profiles. But in some reason, libx265 doesn't
-# show them all.
-class Codec:
-    def __init__(self, name: str,
-                 presets: List[str],
-                 preferred_preset: str,
-                 tunes: List[str],
-                 preferred_tune: str,
-                 profiles: List[str],
-                 preferred_profile: str):
-        self.name = name
-
-        self.presets = presets
-        self.preferred_preset = preferred_preset
-
-        self.tunes = tunes
-        self.preferred_tune = preferred_tune
-
-        self.profiles = profiles
-        self.preferred_profile = preferred_profile
-
-    def __str__(self):
-        return f'Codec({self.name})'
-
-    def __repr__(self):
-        return self.__str__()
-
-LIBX265_CODEC = Codec(
-    'libx265',
-    [
-        'ultrafast',
-        'superfast',
-        'veryfast',
-        'faster',
-        'fast',
-        'medium' ,
-        'slow',
-        'slower',
-        'veryslow',
-        'placebo',
-    ],
-    'slow',
-    [
-        'psnr',
-        'ssim',
-        'grain',
-        'fastdecode',
-        'zerolatency',
-        'animation'
-    ],
-    'grain',
-    [
-        'main',
-        'main444-8',
-        'main10',
-        'main422-10',
-        'main444-10',
-        'main12',
-        'main422-12',
-        'main444-12',
-    ],
-    'main'
-)
-
-HEVC_NVENC_CODEC = Codec(
-    'hevc_nvenc',
-    [
-        'default',
-        'slow',  # hq 2 passes
-        'medium',  # hq 1 pass
-        'fast',  # hp 1 pass
-        'hp',
-        'hq',
-        'bd',
-        'll',  # low latency
-        'llhq',  # low latency hq
-        'llhp',  # low latency hp
-        'lossless',  # lossless
-        'losslesshp',  # lossless hp
-        'p1',  # fastest (lowest quality)
-        'p2',  # faster (lower quality)
-        'p3',  # fast (low quality)
-        'p4',  # medium (default)
-        'p5',  # slow (good quality)
-        'p6',  # slower (better quality)
-        'p7',  # slowest (best quality)
-     ],
-    'p6',
-    [
-        'hq', # High quality
-        'll', # Low latency
-        'ull', # Ultra low latency
-        'lossless', # Set the encoding profile (from 0 to 4) (default main)
-    ],
-    'hq',
-    [
-        'main',
-        'main10',
-        'rext',
-    ],
-    'main'
-)
-
-HEVC_VIDEOTOOLBOX_CODEC = Codec(
-    'hevc_videotoolbox',
-    [
-        'default',
-        'slow',
-        'medium',
-        'fast',
-        'faster',
-        'fastest',
-    ],
-    'medium',
-    [
-        'default',
-    ],
-    'default',
-    [
-        'main',
-        'main10',
-    ],
-    'main'
-)
-
-def find_ffmpeg() -> Result[str, str]:
-    ffmpeg = shutil.which('ffmpeg')
-    if ffmpeg is None:
-        return Err('ffmpeg not found')
-
-    return Ok(ffmpeg)
-
-def find_ffprobe() -> Result[str, str]:
-    ffprobe = shutil.which('ffprobe')
-    if ffprobe is None:
-        return Err('ffprobe not found')
-
-    return Ok(ffprobe)
-
 def get_supported_hevc_codecs(ffmpeg: str) -> Result[List[Codec], str]:
     args = [ffmpeg, '-hide_banner', '-encoders']
 
@@ -173,17 +33,31 @@ def get_supported_hevc_codecs(ffmpeg: str) -> Result[List[Codec], str]:
     if code != 0:
         return Err(f'Failed to get codecs: {result.strip()}')
 
-    known_codecs = [ LIBX265_CODEC, HEVC_NVENC_CODEC, HEVC_VIDEOTOOLBOX_CODEC ]
     codecs = []
     for line in result.split('\n'):
-        for codec in known_codecs:
+        for codec in KNOWN_CODECS:
             if codec.name in line:
                 codecs.append(codec)
                 break
 
     return Ok(codecs)
 
-def get_video_duration_seconds(ffprobe: str, file: str) -> Result[float, str]:
+def get_container_metadata(ffprobe: str, file: str) -> Result[dict, str]:
+    args = [ffprobe, '-v', 'error', '-show_entries', 'format_tags', '-of', 'json', file]
+    code, result = run(args)
+    if code != 0:
+        return Err(f'Failed to get metadata: {result.strip()}')
+
+    data = json.loads(result)
+    if 'format' not in data:
+        return Err('No format in metadata')
+
+    if 'tags' not in data['format']:
+        return Err('No tags in metadata')
+
+    return Ok(data['format']['tags'])
+
+def get_container_duration_seconds(ffprobe: str, file: str) -> Result[float, str]:
     args = [ffprobe, '-v', 'error', '-show_entries', 'format=duration',
          '-of', 'default=noprint_wrappers=1:nokey=1', file]
     code, result = run(args)
@@ -192,8 +66,8 @@ def get_video_duration_seconds(ffprobe: str, file: str) -> Result[float, str]:
 
     return Ok(float(result))
 
-def get_video_duration_frames(ffprobe: str, file: str) -> Result[int, str]:
-    duration_sec = get_video_duration_seconds(ffprobe, file)
+def get_container_duration_frames(ffprobe: str, file: str) -> Result[int, str]:
+    duration_sec = get_container_duration_seconds(ffprobe, file)
     if isinstance(duration_sec, Err):
         return duration_sec
 
@@ -213,48 +87,7 @@ def get_video_duration_frames(ffprobe: str, file: str) -> Result[int, str]:
     logger.debug('Frame rate: %f, duration: %f', frame_rate, duration_sec.unwrap())
     return Ok(int(frame_rate * duration_sec.unwrap()))
 
-class FFMpegTrack:
-    def __init__(self, index: int, codec: str, language: str, title: str, duration: float):
-        self.index = index
-        self.codec = codec
-        self.language = language
-        self.title = title
-        self.duration = duration
-        self.keep = True
-
-    def __str__(self):
-        return f'{self.index}; codec={self.codec}, lang={self.language}, title=\"{self.title}\", duration={self.duration:.2f}'
-
-    def __repr__(self):
-        return self.__str__()
-
-class VideoTrack(FFMpegTrack):
-    def __init__(self, index: int, codec: str, language: str, title: str, duration: float, frame_rate: float):
-        super().__init__(index, codec, language, title, duration)
-        self.frame_rate = frame_rate
-
-    def is_h265(self) -> bool:
-        return 'hevc' in self.codec or 'h265' in self.codec
-
-    def __str__(self):
-        return f'VideoTrack({super().__str__()}, fps={self.frame_rate:.2f})'
-
-class AudioTrack(FFMpegTrack):
-    def __init__(self, index: int, codec: str, language: str, title: str, duration: float, channels: int):
-        super().__init__(index, codec, language, title, duration)
-        self.channels = channels
-
-    def __str__(self):
-        return f'AudioTrack({super().__str__()}, channels={self.channels})'
-
-class SubtitleTrack(FFMpegTrack):
-    def __init__(self, index: int, codec: str, language: str, title: str, duration: float):
-        super().__init__(index, codec, language, title, duration)
-
-    def __str__(self):
-        return f'SubtitleTrack({super().__str__()})'
-
-def get_video_tracks(ffprobe: str, file: str) -> Result[List['FFMpegTrack'], str]:
+def get_video_tracks(ffprobe: str, file: str) -> Result[List['Track'], str]:
     def duration_to_secs(duration: str) -> float:
         match = FFMPEG_DURATION_RE.match(duration)
         if match is None:
@@ -282,7 +115,7 @@ def get_video_tracks(ffprobe: str, file: str) -> Result[List['FFMpegTrack'], str
             type: str,
             add_tags: str,
             add_entries: str,
-            parser: callable) -> Result[List[FFMpegTrack], str]:
+            parser: callable) -> Result[List[Track], str]:
 
         args = [
             ffprobe,
@@ -328,6 +161,7 @@ def get_video_tracks(ffprobe: str, file: str) -> Result[List['FFMpegTrack'], str
         return Ok(tracks)
 
     tracks = []
+    # Process video
     res = process_streams(
             'V',
             '',
@@ -339,6 +173,7 @@ def get_video_tracks(ffprobe: str, file: str) -> Result[List['FFMpegTrack'], str
         return res
     tracks.extend(res.unwrap())
 
+    # Process audio
     res = process_streams(
             'a',
             '',
@@ -350,6 +185,7 @@ def get_video_tracks(ffprobe: str, file: str) -> Result[List['FFMpegTrack'], str
         return res
     tracks.extend(res.unwrap())
 
+    # Process subtitles
     res = process_streams(
             's',
             '',
@@ -359,6 +195,16 @@ def get_video_tracks(ffprobe: str, file: str) -> Result[List['FFMpegTrack'], str
     if res.is_err():
         return res
     tracks.extend(res.unwrap())
+
+    # Process attachments
+    res = process_streams(
+            'd',
+            '',
+            '',
+            lambda index, codec, language, title, duration, _: Track(
+                index, codec, language, title, duration))
+    if res.is_err():
+        return res
 
     if len(tracks) == 0:
         return Err('No tracks found')
@@ -394,8 +240,16 @@ class FFMpegRemuxer:
         self.args.extend(['-map', '0:t?'])
         return self
 
-    def keep_track(self, track: FFMpegTrack) -> 'FFMpegRemuxer':
-        self.args.extend(['-map', f'0:{track.index}'])
+    def keep_track(self, track: Track) -> 'FFMpegRemuxer':
+        # Keep track and update title/language
+        self.args.extend(['-map', f'0:{track.index}',
+                            f'-metadata:s:{track.index}', f'language={track.language}',
+                            f'-metadata:s:{track.index}', f'title={track.title}'])
+        return self
+
+    def set_format_metadata(self, data: Dict[str, str]) -> 'FFMpegRemuxer':
+        for key, value in data.items():
+            self.args.extend(['-metadata', f'{key}={value}'])
         return self
 
     def process(self, output_file: str, on_progress: Callable[[int, float], None]) -> Result[Any, str]:

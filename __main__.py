@@ -9,10 +9,15 @@
 import argparse
 import logging
 import os
+from typing import List
 
-from gui import run_gui
+from PyQt5 import QtWidgets
 
 from __version__ import __version__, __author__, __description__
+from gui.backup_manager_dialog import BackupManager
+from gui.colors import Colors
+from gui.icons import render_svg, APP_ICON
+from gui.main_window import MainWindow
 
 
 def setup_logging(args):
@@ -51,6 +56,20 @@ def setup_logging(args):
     handler.setFormatter(logging.Formatter(get_format_string(not args.colorless, args.log == "debug")))
     logging.getLogger().addHandler(handler)
 
+def run_gui(only_backup_manager: bool, start_files: List[str]) -> int:
+    app = QtWidgets.QApplication([])
+    Colors.set_dark_mode(app.palette().window().color().value() <
+                         app.palette().windowText().color().value())
+    app.setWindowIcon(render_svg(APP_ICON, 32, Colors.get_icon_color()))
+
+    if only_backup_manager:
+        gui = BackupManager(start_files)
+    else:
+        gui = MainWindow(start_files)
+
+    gui.show()
+    return app.exec_()
+
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, prog=os.path.basename(__file__))
     parser.description = __description__
@@ -68,7 +87,10 @@ def main():
         args.input = [item for sublist in args.input for item in sublist]
 
     setup_logging(args)
-    run_gui(args.backup_manager, args.input)
+
+    logging.info("Trimmer. Version: %s", __version__)
+
+    return run_gui(args.backup_manager, args.input)
 
 if __name__ == '__main__':
-    main()
+    exit(main())

@@ -10,6 +10,7 @@ import os
 import platform
 import logging
 import re
+import shutil
 import subprocess
 import time
 from typing import List, Tuple
@@ -30,6 +31,20 @@ def run(args: List[str]) -> Tuple[int, str]:
     output = stdout + stderr
     logger.debug('code: %d, output: [%s]', process.returncode, output)
     return process.returncode, output
+
+def find_ffmpeg() -> Result[str, str]:
+    ffmpeg = shutil.which('ffmpeg')
+    if ffmpeg is None:
+        return Err('ffmpeg not found')
+
+    return Ok(ffmpeg)
+
+def find_ffprobe() -> Result[str, str]:
+    ffprobe = shutil.which('ffprobe')
+    if ffprobe is None:
+        return Err('ffprobe not found')
+
+    return Ok(ffprobe)
 
 def unique_bak_name(file):
     i = 0
@@ -106,6 +121,9 @@ def pretty_errno(errno: int) -> str:
     if errno == 0:
         return "success"
     return os.strerror(errno)
+
+def pretty_date(timestamp: float) -> str:
+    return time.strftime('%d-%m-%Y %H:%M:%S', time.gmtime(timestamp))
 
 class ETACalculator:
     def __init__(self, start_time: float, start_percent: float):
