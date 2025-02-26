@@ -6,11 +6,14 @@ and then transcode them to a new file.
 By default, utility will try to re-encode video streams to H.265/HEVC codec
 using `libx265` or any available hardware encoder (e.g. `hevc_nvenc` for NVIDIA GPUs).
 
-<p align="center">
-  <img src=https://github.com/Coestaris/trimmer/blob/main/screenshots/1.jpg width="350">
-  <img src=https://github.com/Coestaris/trimmer/blob/main/screenshots/2.jpg width="350">
-  <img src=https://github.com/Coestaris/trimmer/blob/main/screenshots/3.jpg width="350">
-</p>
+<details>
+  <summary>Screenshots</summary>
+  <p align="center">
+    <img src=https://github.com/Coestaris/trimmer/blob/main/screenshots/1.jpg width="350">
+    <img src=https://github.com/Coestaris/trimmer/blob/main/screenshots/2.jpg width="350">
+    <img src=https://github.com/Coestaris/trimmer/blob/main/screenshots/3.jpg width="350">
+  </p>
+</details>
 
 Requirements:
 - Python 3.8 or newer with pip: https://www.python.org/downloads/
