@@ -10,6 +10,7 @@ import logging
 import os
 import platform
 import time
+from abc import abstractmethod
 from typing import List
 
 from PyQt5 import QtWidgets, QtCore, QtGui
@@ -29,9 +30,10 @@ from gui.icons import render_svg, AUDIO_FILTER_ICON, VIDEO_FILTER_ICON, \
     ADD_DIRECTORY_ICON, REMOVE_ICON, REMOVE_ALL_ICON, KEEP_ALL_ICON, \
     KEEP_NONE_ICON, BATCH_ENCODING_OPTIONS_ICON, PROCESS_ICON, \
     BATCH_TITLE_TOOL_ICON
+from gui.windows_taskbar_progress import WindowsTaskbarProgress
 from track import Track, AttachmentTrack
 from utils import pretty_duration, pretty_size, get_gpu_name, ETACalculator, \
-    find_ffmpeg, find_ffprobe, pretty_date
+    find_ffmpeg, find_ffprobe, pretty_date, suspend_os
 
 if platform.system() == 'Windows':
     try:
@@ -91,6 +93,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.processing_thread = QtCore.QThread()
         self.worker = None
+        self.windows_taskbar_progress = None
 
         self.ffmpeg = find_ffmpeg()
         if self.ffmpeg.is_err():
@@ -129,9 +132,7 @@ class MainWindow(QtWidgets.QMainWindow):
         logger.info('Preferred codec: %s', self.preferred_codec)
 
         if len(files) != 0:
-            for file in files:
-                self.open_file(file)
-            self.update_files_table()
+            self.open_files(files)
 
         self.files_count_changed()
         self.setAcceptDrops(True)
@@ -147,9 +148,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def dropEvent(self, event):
         logger.debug('Dropped files: %s', event.mimeData().urls())
-        for url in event.mimeData().urls():
-            self.open_file(url.toLocalFile())
-        self.update_files_table()
+        files = [url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()]
+        self.open_files(files)
 
     def open_file(self, file: str):
         for f in self.files:
@@ -363,6 +363,19 @@ class MainWindow(QtWidgets.QMainWindow):
         dialog = BackupManager()
         dialog.exec_()
 
+    def open_files(self, list: list[str]):
+        # Notify user that processing is going
+        # I'm to lazy to implement proper progress bar
+        self.windows_taskbar_progress.set_progress(0)
+        self.windows_taskbar_progress.set_visible(True)
+
+        for i, file in enumerate(list):
+            self.windows_taskbar_progress.set_progress(i / len(list) * 100)
+            self.open_file(file)
+
+        self.windows_taskbar_progress.set_visible(False)
+        self.update_files_table()
+
     def add_files(self):
         logger.info('Add files')
         dialog = QtWidgets.QFileDialog()
@@ -371,31 +384,47 @@ class MainWindow(QtWidgets.QMainWindow):
         filter = ''
         for extension, description in SUPPORTED_CONTAINERS:
             filter += f'{description} (*{extension});;'
-
         # Any video file
         filter += 'All video files (' + ' '.join([f'*{extension} ' for extension, _ in SUPPORTED_CONTAINERS]) + ')' + ';;'
-
         # Any file
         filter += 'All files (*)'
 
         dialog.setNameFilter(filter)
         if dialog.exec_():
             files = dialog.selectedFiles()
-            for file in files:
-                self.open_file(file)
-            self.update_files_table()
+            self.open_files(files)
+
+    def collect_files(self, dir: str, recursive: bool) -> List[str]:
+        logger.debug('Open directory: %s, recursive: %s', dir, recursive)
+        files = []
+        # Don't use os.walk since its freezes on Windows Network paths
+        for token in os.listdir(dir):
+            path = os.path.join(dir, token)
+            if os.path.isdir(path):
+                if recursive:
+                    files += self.collect_files(path, True)
+            elif any(token.endswith(container.ext) for container in SUPPORTED_CONTAINERS):
+                files.append(path)
+
+        return files
 
     def add_directory(self):
         logger.info('Add directory')
         dialog = QtWidgets.QFileDialog()
         dialog.setFileMode(QtWidgets.QFileDialog.Directory)
         if dialog.exec_():
-            directory = dialog.selectedFiles()[0]
-            for root, _, files in os.walk(directory):
-                for file in files:
-                    if any(file.endswith(extension) for extension, _ in SUPPORTED_CONTAINERS):
-                        self.open_file(os.path.join(root, file))
-            self.update_files_table()
+            directories = dialog.selectedFiles()
+            for directory in directories:
+                self.open_files(self.collect_files(directory, False))
+
+    def add_directory_recursive(self):
+        logger.info('Add directory recursive')
+        dialog = QtWidgets.QFileDialog()
+        dialog.setFileMode(QtWidgets.QFileDialog.Directory)
+        if dialog.exec_():
+            directories = dialog.selectedFiles()
+            for directory in directories:
+                self.open_files(self.collect_files(directory, True))
 
     def files_count_changed(self):
         any_file = len(self.files) != 0
@@ -592,16 +621,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.overall_progress.setValue(0)
         self.current_progress_label.setText('')
         self.current_progress.setValue(0)
-        if hasattr(self, 'win_taskbar_progress'):
-            self.win_taskbar_progress.setVisible(True)
-            self.win_taskbar_progress.show()
-            self.win_taskbar_progress.resume()
+        self.windows_taskbar_progress.set_progress(0)
+        self.windows_taskbar_progress.set_visible(True)
 
         start_time = time.time()
         overall_eta = ETACalculator(start_time, 0)
 
         # Forbid changing window size to the contents
-        # allowing only manual chanes, to prevent visual glithes
+        # allowing only manual chanes, to prevent visual glitches
         if platform.system() == 'Darwin':
             self.setFixedSize(self.size())
 
@@ -617,9 +644,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 f'ETA: {pretty_duration(overall_eta.get())}'
             )
 
-            if hasattr(self, 'win_taskbar_progress'):
-                self.win_taskbar_progress.setValue(int(total_percent))
-
+            self.windows_taskbar_progress.set_progress(int(total_percent))
 
         def update_file_status_with_gui(index, status):
             file_statuses[index].set_status(status)
@@ -656,9 +681,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.overall_progress.setFormat('Done')
             self.overall_progress_label.setText('Time elapsed: ' + pretty_duration(time.time() - start_time))
 
-            if hasattr(self, 'win_taskbar_progress'):
-                self.win_taskbar_progress.pause()
-                self.win_taskbar_progress.setVisible(False)
+            self.windows_taskbar_progress.set_visible(False)
+            if self.suspend_os_on_finish_checkbox.isChecked():
+                suspend_os()
 
         # Add files to process
         self.process_table.setRowCount(len(self.files))
@@ -697,10 +722,9 @@ class MainWindow(QtWidgets.QMainWindow):
             toolbar.setOrientation(QtCore.Qt.Horizontal)
             toolbar.setIconSize(QtCore.QSize(32, 32))
             toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-            toolbar.addAction(render_svg(BACKUP_MANAGER_ICON, 32, Colors.get_icon_color()), 'Backup\nmanager', lambda: self.backup_manager())
-            toolbar.addSeparator()
             toolbar.addAction(render_svg(ADD_FILES_ICON, 32, Colors.get_icon_color()), 'Add files', lambda: self.add_files())
             toolbar.addAction(render_svg(ADD_DIRECTORY_ICON, 32, Colors.get_icon_color()), 'Add directory', lambda: self.add_directory())
+            toolbar.addAction(render_svg(ADD_DIRECTORY_ICON, 32, Colors.get_icon_color()), 'Add directory\nrecursively', lambda: self.add_directory_recursive())
 
             self.remove_selected_action = QAction(render_svg(REMOVE_ICON, 32, Colors.get_icon_color()), 'Remove\nselected', toolbar)
             self.remove_selected_action.triggered.connect(lambda: self.remove_selected())
@@ -714,17 +738,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
             toolbar.addSeparator()
 
-            self.audio_filter_action = QAction(render_svg(AUDIO_FILTER_ICON, 32, Colors.get_icon_color()), 'Audio filter', toolbar)
+            self.audio_filter_action = QAction(render_svg(AUDIO_FILTER_ICON, 32, Colors.get_icon_color()), 'Audio tacks\nfilter', toolbar)
             self.audio_filter_action.triggered.connect(lambda: self.audio_filter())
             self.audio_filter_action.setEnabled(False)
             toolbar.addAction(self.audio_filter_action)
 
-            self.video_filter_action = QAction(render_svg(VIDEO_FILTER_ICON, 32, Colors.get_icon_color()), 'Video filter', toolbar)
+            self.video_filter_action = QAction(render_svg(VIDEO_FILTER_ICON, 32, Colors.get_icon_color()), 'Video tracks\nfilter', toolbar)
             self.video_filter_action.triggered.connect(lambda: self.video_filter())
             self.video_filter_action.setEnabled(False)
             toolbar.addAction(self.video_filter_action)
 
-            self.subtitle_filter_action = QAction(render_svg(SUBTITLE_FILTER_ICON, 32, Colors.get_icon_color()), 'Subtitle filter', toolbar)
+            self.subtitle_filter_action = QAction(render_svg(SUBTITLE_FILTER_ICON, 32, Colors.get_icon_color()), 'Subtitle tracks\nfilter', toolbar)
             self.subtitle_filter_action.triggered.connect(lambda: self.subtitle_filter())
             self.subtitle_filter_action.setEnabled(False)
             toolbar.addAction(self.subtitle_filter_action)
@@ -741,7 +765,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             toolbar.addSeparator()
 
-            self.batch_encoding_options_action = QAction(render_svg(BATCH_ENCODING_OPTIONS_ICON, 32, Colors.get_icon_color()), 'Batch codec\noptions', toolbar)
+            self.batch_encoding_options_action = QAction(render_svg(BATCH_ENCODING_OPTIONS_ICON, 32, Colors.get_icon_color()), 'Batch codec\ntool', toolbar)
             self.batch_encoding_options_action.triggered.connect(lambda: self.batch_encoding_options())
             self.batch_encoding_options_action.setEnabled(False)
             toolbar.addAction(self.batch_encoding_options_action)
@@ -757,6 +781,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.process_action.triggered.connect(lambda: self.process())
             self.process_action.setEnabled(False)
             toolbar.addAction(self.process_action)
+
+            toolbar.addAction(render_svg(BACKUP_MANAGER_ICON, 32, Colors.get_icon_color()), 'Backup\nmanager', lambda: self.backup_manager())
 
             files_tab_layout.addWidget(toolbar)
 
@@ -857,6 +883,9 @@ class MainWindow(QtWidgets.QMainWindow):
             layout.addWidget(self.overall_progress_simple_label, alignment=QtCore.Qt.AlignRight)
             process_tab_layout.addWidget(widget)
 
+            self.suspend_os_on_finish_checkbox = QtWidgets.QCheckBox('Suspend OS on finish')
+            process_tab_layout.addWidget(self.suspend_os_on_finish_checkbox)
+
             process_tab.setLayout(process_tab_layout)
             return process_tab
 
@@ -870,11 +899,5 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def showEvent(self, a0):
         # In constructor, window handle seems to be not yet created
-        if platform.system() == 'Windows':
-            logger.info('Windows detected, enabling taskbar progress')
-            self.win_taskbar_button = QWinTaskbarButton(self)
-            self.win_taskbar_button.setWindow(self.windowHandle())
-
-            self.win_taskbar_progress = self.win_taskbar_button.progress()
-            self.win_taskbar_progress.setRange(0, 100)
-            self.win_taskbar_progress.setVisible(False)
+        if self.windows_taskbar_progress is None:
+            self.windows_taskbar_progress = WindowsTaskbarProgress(self)

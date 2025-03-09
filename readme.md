@@ -9,9 +9,9 @@ using `libx265` or any available hardware encoder (e.g. `hevc_nvenc` for NVIDIA 
 <details>
   <summary>Screenshots</summary>
   <p align="center">
-    <img src=https://github.com/Coestaris/trimmer/blob/main/screenshots/1.jpg width="350">
-    <img src=https://github.com/Coestaris/trimmer/blob/main/screenshots/2.jpg width="350">
-    <img src=https://github.com/Coestaris/trimmer/blob/main/screenshots/3.jpg width="350">
+    <img src=https://github.com/Coestaris/trimmer/blob/main/screenshots/1.png width="350">
+    <img src=https://github.com/Coestaris/trimmer/blob/main/screenshots/2.png width="350">
+    <img src=https://github.com/Coestaris/trimmer/blob/main/screenshots/3.png width="350">
   </p>
 </details>
 

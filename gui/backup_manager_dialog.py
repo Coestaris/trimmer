@@ -18,6 +18,7 @@ from gui.colors import Colors
 from gui.icons import render_svg, ADD_FILES_ICON, ADD_DIRECTORY_ICON, \
     ADD_DIRECTORY_REC_ICON, REMOVE_ICON, RESTORE_ICON, REMOVE_ALL_ICON, \
     RESTORE_ALL_ICON
+from gui.windows_taskbar_progress import WindowsTaskbarProgress
 from utils import pretty_size, pretty_date
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,8 @@ class BackupManager(QtWidgets.QDialog):
 
         for file in start_files or []:
             self.open_file(file)
+
+        self.windows_taskbar_progress = WindowsTaskbarProgress.get_singleton()
 
     def get_nobak(self, file):
         return file.split('.bak')[0]
@@ -146,8 +149,15 @@ class BackupManager(QtWidgets.QDialog):
         self.files_count_changed()
 
     def restore_all_bak(self):
-        for file in self.files:
+        self.windows_taskbar_progress.set_progress(0)
+        self.windows_taskbar_progress.set_visible(True)
+
+        for i, file in enumerate(self.files):
             self.restore_file(file)
+            self.windows_taskbar_progress.set_progress((i + 1) / len(self.files) * 100)
+
+        self.windows_taskbar_progress.set_visible(False)
+
         self.files_table.setRowCount(0)
         self.files = []
         self.files_count_changed()
@@ -164,8 +174,15 @@ class BackupManager(QtWidgets.QDialog):
         self.files_count_changed()
 
     def remove_all_bak(self):
-        for file in self.files:
+        self.windows_taskbar_progress.set_progress(0)
+        self.windows_taskbar_progress.set_visible(True)
+
+        for i, file in enumerate(self.files):
             self.remove_file(file)
+            self.windows_taskbar_progress.set_progress((i + 1) / len(self.files) * 100)
+
+        self.windows_taskbar_progress.set_visible(False)
+
         self.files_table.setRowCount(0)
         self.files = []
         self.files_count_changed()
@@ -185,8 +202,8 @@ class BackupManager(QtWidgets.QDialog):
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         layout.addWidget(toolbar)
         toolbar.addAction(render_svg(ADD_FILES_ICON, 32, Colors.get_icon_color()), 'Add files', self.add_files)
-        toolbar.addAction(render_svg(ADD_DIRECTORY_ICON, 32, Colors.get_icon_color()), 'Add directory', self.add_files)
-        toolbar.addAction(render_svg(ADD_DIRECTORY_REC_ICON, 32, Colors.get_icon_color()), 'Add directory\nrecursively', self.add_files)
+        toolbar.addAction(render_svg(ADD_DIRECTORY_ICON, 32, Colors.get_icon_color()), 'Add directory', self.add_directory)
+        toolbar.addAction(render_svg(ADD_DIRECTORY_REC_ICON, 32, Colors.get_icon_color()), 'Add directory\nrecursively', self.add_directory_recursively)
         toolbar.addSeparator()
 
         self.remove_selected_action = QAction(render_svg(REMOVE_ICON, 32, Colors.get_icon_color()), 'Remove\nselected', toolbar)
