@@ -132,30 +132,56 @@ class ETACalculator:
     def reset(self, start_time: float, start_percent: float):
         self.start_time = start_time
         self.prev_time = start_time
-        self.percent = start_percent
         self.prev_percent = start_percent
         self.eta = 0
+        self.speed_avg = None  # Moving average of speed
+        self.alpha = 0.2  # Higher initial smoothing for quick adaptation
+        self.update_count = 0  # Track number of updates
 
     def feed(self, percent: float):
         current_time = time.time()
         time_diff = current_time - self.prev_time
 
-        if time_diff == 0 or percent <= self.prev_percent:
+        if time_diff <= 0 or percent <= self.prev_percent:
             return  # Avoid division by zero or incorrect values
 
         progress_diff = percent - self.prev_percent
-        speed = progress_diff / time_diff  # Percentage per second
+        instant_speed = progress_diff / time_diff  # Percentage per second
 
-        if speed > 0:
-            new_eta = (100 - percent) / speed  # Time remaining in seconds
+        # Smooth the speed using exponential moving average
+        if self.speed_avg is None:
+            self.speed_avg = instant_speed  # Initialize on first valid speed
+        else:
+            self.speed_avg = (1 - self.alpha) * self.speed_avg + self.alpha * instant_speed
+
+        # Reduce alpha over time for more stability after initial phase
+        self.update_count += 1
+        self.alpha = max(0.05, 0.2 / (1 + 0.1 * self.update_count))  # Adaptive smoothing
+
+        if self.speed_avg > 0:
+            new_eta = (100 - percent) / self.speed_avg  # Estimated time remaining
+
+            # Ignore initial unreasonably high ETAs
+            if new_eta > 10 * (current_time - self.start_time):  # Cap based on elapsed time
+                new_eta = self.eta if self.eta > 0 else 0  # Use previous estimate if available
+
             if self.eta == 0:
                 self.eta = new_eta
             else:
-                # Smooth ETA using an exponential moving average
-                self.eta = 0.9 * self.eta + 0.1 * new_eta
+                self.eta = (1 - self.alpha) * self.eta + self.alpha * new_eta  # Smooth ETA
 
         self.prev_time = current_time
         self.prev_percent = percent
 
     def get(self) -> float:
         return self.eta
+
+def suspend_os():
+    if platform.system() == 'Windows':
+        run(['rundll32.exe', 'powrprof.dll,SetSuspendState', '0,1,0'])
+    elif platform.system() == 'Linux':
+        run(['systemctl', 'suspend'])
+    elif platform.system() == 'Darwin':
+        run(['osascript', '-e', 'tell application "System Events" to sleep'])
+    else:
+        logger.error('Cannot suspend OS: unsupported OS')
