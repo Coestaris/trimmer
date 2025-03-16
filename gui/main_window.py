@@ -622,6 +622,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.completed_percent = 100
                 if self.status == 'pending' or self.status == 'working':
                     self.completed_percent = 0
+                    self.start_time = time.time()
                     self.eta.reset(time.time(), 0)
 
             def update_progress(self, frame: int):
