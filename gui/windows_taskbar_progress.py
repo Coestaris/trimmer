@@ -14,8 +14,22 @@ from PyQt5.QtWinExtras import QWinTaskbarButton
 
 logger = logging.getLogger(__name__)
 
+
+class WindowsTaskbarProgressDummy:
+    __single_instance = None
+
+    def set_progress(self, value: int):
+        pass
+
+    def set_visible(self, visible: bool):
+        pass
+
+    @staticmethod
+    def get_singleton() -> 'WindowsTaskbarProgress':
+        return None
+
 if platform.system() == 'Windows':
-    class WindowsTaskbarProgress:
+    class WindowsTaskbarProgress(WindowsTaskbarProgressDummy):
         __single_instance = None
 
         def __init__(self, main_window: QtWidgets.QMainWindow):
@@ -38,20 +52,10 @@ if platform.system() == 'Windows':
             self.win_taskbar_progress.setVisible(visible)
 
         @staticmethod
-        def get_singleton() -> 'WindowsTaskbarProgress':
+        def get_singleton() -> 'WindowsTaskbarProgressDummy':
             if WindowsTaskbarProgress.__single_instance is None:
-                raise Exception('WindowsTaskbarProgress is not initialized')
+                logger.warning('WindowsTaskbarProgress is not initialized')
+                return WindowsTaskbarProgressDummy()
             return WindowsTaskbarProgress.__single_instance
 else:
-    class WindowsTaskbarProgress:
-        __single_instance = None
-
-        def set_progress(self, value: int):
-            pass
-
-        def set_visible(self, visible: bool):
-            pass
-
-        @staticmethod
-        def get_singleton() -> 'WindowsTaskbarProgress':
-            return None
+    WindowsTaskbarProgress = WindowsTaskbarProgressDummy

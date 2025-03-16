@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 #
-# @file backup_manager_dialog.py
+# @file backup_tool_dialog.py
 # @date 26-02-2025
 # @author Maxim Kurylko <vk_vm@ukr.net>
 #
@@ -23,7 +23,7 @@ from utils import pretty_size, pretty_date
 
 logger = logging.getLogger(__name__)
 
-class BackupManager(QtWidgets.QDialog):
+class BackupTool(QtWidgets.QDialog):
     def __init__(self, start_files: List[str] = None):
         super().__init__()
         self.setAcceptDrops(True)
@@ -188,7 +188,7 @@ class BackupManager(QtWidgets.QDialog):
         self.files_count_changed()
 
     def init_ui(self):
-        self.setWindowTitle('Backup Manager')
+        self.setWindowTitle('Backup Tool')
         self.setBaseSize(1600, 1000)
 
         layout = QtWidgets.QVBoxLayout()

@@ -20,16 +20,17 @@ from __version__ import __version__
 from codec import prefer_hevc_codec
 from container import Container, SUPPORTED_CONTAINERS, PREFERRED_CONTAINER
 from ffmpeg import VideoTrack, AudioTrack, SubtitleTrack, get_supported_hevc_codecs
-from gui.backup_manager_dialog import BackupManager
+from gui.backup_tool_dialog import BackupTool
 from gui.batch_encoding_dialog import BatchEncodingOptionsDialog
 from gui.batch_title_tool_dialog import BatchTitleToolDialog
 from gui.colors import Colors
 from gui.filter_dialog import FilterDialog
 from gui.icons import render_svg, AUDIO_FILTER_ICON, VIDEO_FILTER_ICON, \
-    SUBTITLE_FILTER_ICON, BACKUP_MANAGER_ICON, ADD_FILES_ICON, \
+    SUBTITLE_FILTER_ICON, BACKUP_TOOL_ICON, ADD_FILES_ICON, \
     ADD_DIRECTORY_ICON, REMOVE_ICON, REMOVE_ALL_ICON, KEEP_ALL_ICON, \
     KEEP_NONE_ICON, BATCH_ENCODING_OPTIONS_ICON, PROCESS_ICON, \
-    BATCH_TITLE_TOOL_ICON
+    BATCH_TITLE_TOOL_ICON, SERIES_RENAME_TOOL_ICON
+from gui.series_tool_dialog import SeriesTool
 from gui.windows_taskbar_progress import WindowsTaskbarProgress
 from track import Track, AttachmentTrack
 from utils import pretty_duration, pretty_size, get_gpu_name, ETACalculator, \
@@ -148,7 +149,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def dropEvent(self, event):
         logger.debug('Dropped files: %s', event.mimeData().urls())
-        files = [url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()]
+        tokens = [url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()]
+        files = []
+        for token in tokens:
+            if os.path.isdir(token):
+                files += self.collect_files(token, True)
+            else:
+                files.append(token)
+
         self.open_files(files)
 
     def open_file(self, file: str):
@@ -358,9 +366,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.file_tracks.blockSignals(False)
 
-    def backup_manager(self):
-        logger.info('Backup manager')
-        dialog = BackupManager()
+    def backup_tool(self):
+        logger.info('Backup tool')
+        dialog = BackupTool()
+        dialog.exec_()
+
+    def series_tool(self):
+        logger.info('Series tool')
+        dialog = SeriesTool()
         dialog.exec_()
 
     def open_files(self, list: list[str]):
@@ -459,25 +472,28 @@ class MainWindow(QtWidgets.QMainWindow):
         self.files_table.setRowCount(0)
         self.files_count_changed()
 
-    def filter(self, filters: list[str], t: Track):
+    def filter(self, filters: list[str], negative_logic, t: Track):
         logger.info('Filters: %s', filters)
         for container in self.files:
             for track in container.tracks:
                 if isinstance(track, t):
-                    track.keep = False
+                    matches = False
                     for filter in filters:
-                        if filter == '*':
-                            track.keep = True
-                            break
                         if filter.lower() in track.language.lower():
-                            track.keep = True
+                            matches = True
                             break
                         if filter.lower() in track.title.lower():
-                            track.keep = True
+                            matches = True
                             break
                         if filter.lower() in track.codec.lower():
-                            track.keep = True
+                            matches = True
                             break
+
+                    if not negative_logic:
+                        track.keep = (matches or any('*' in filter for filter in filters)) and track.keep
+                    else:
+                        track.keep = not matches and track.keep
+
         self.update_files_table()
         self.on_file_selected()
 
@@ -485,19 +501,19 @@ class MainWindow(QtWidgets.QMainWindow):
         logger.info('Audio filter')
         filter = FilterDialog(render_svg(AUDIO_FILTER_ICON, 32, Colors.get_icon_color()), 'Audio filter')
         if filter.exec_():
-            self.filter(filter.filters, AudioTrack)
+            self.filter(filter.filters, filter.negative_logic, AudioTrack)
 
     def video_filter(self):
         logger.info('Video filter')
         filter = FilterDialog(render_svg(VIDEO_FILTER_ICON, 32, Colors.get_icon_color()), 'Video filter')
         if filter.exec_():
-            self.filter(filter.filters, VideoTrack)
+            self.filter(filter.filters, filter.negative_logic,VideoTrack)
 
     def subtitle_filter(self):
         logger.info('Subtitle filter')
         filter = FilterDialog(render_svg(SUBTITLE_FILTER_ICON, 32, Colors.get_icon_color()), 'Audio filter')
         if filter.exec_():
-            self.filter(filter.filters, SubtitleTrack)
+            self.filter(filter.filters, filter.negative_logic, SubtitleTrack)
 
     def keep_all(self):
         logger.info('Keep all')
@@ -782,7 +798,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.process_action.setEnabled(False)
             toolbar.addAction(self.process_action)
 
-            toolbar.addAction(render_svg(BACKUP_MANAGER_ICON, 32, Colors.get_icon_color()), 'Backup\nmanager', lambda: self.backup_manager())
+            toolbar.addSeparator()
+
+            toolbar.addAction(render_svg(BACKUP_TOOL_ICON, 32, Colors.get_icon_color()), 'Backup\ntool', lambda: self.backup_tool())
+            toolbar.addAction(render_svg(SERIES_RENAME_TOOL_ICON, 32, Colors.get_icon_color()), 'Series rename\ntool', lambda: self.series_tool())
 
             files_tab_layout.addWidget(toolbar)
 

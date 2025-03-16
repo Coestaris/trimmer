@@ -14,10 +14,11 @@ from typing import List
 from PyQt5 import QtWidgets
 
 from __version__ import __version__, __author__, __description__
-from gui.backup_manager_dialog import BackupManager
+from gui.backup_tool_dialog import BackupTool
 from gui.colors import Colors
 from gui.icons import render_svg, APP_ICON
 from gui.main_window import MainWindow
+from gui.series_tool_dialog import SeriesTool
 
 
 def setup_logging(args):
@@ -56,14 +57,16 @@ def setup_logging(args):
     handler.setFormatter(logging.Formatter(get_format_string(not args.colorless, args.log == "debug")))
     logging.getLogger().addHandler(handler)
 
-def run_gui(only_backup_manager: bool, start_files: List[str]) -> int:
+def run_gui(backup_tool: bool, series_tool: bool, start_files: List[str]) -> int:
     app = QtWidgets.QApplication([])
     Colors.set_dark_mode(app.palette().window().color().value() <
                          app.palette().windowText().color().value())
     app.setWindowIcon(render_svg(APP_ICON, 32, Colors.get_icon_color()))
 
-    if only_backup_manager:
-        gui = BackupManager(start_files)
+    if backup_tool:
+        gui = BackupTool(start_files)
+    elif series_tool:
+        gui = SeriesTool(start_files)
     else:
         gui = MainWindow(start_files)
 
@@ -78,7 +81,9 @@ def main():
                         help="Log level. Note: 'debug' log level may print sensitive information,\n" 
                              "produce a lot of output and program may run slower/incorectly")
     parser.add_argument("--colorless", action="store_true", help="Disable colored output")
-    parser.add_argument("--backup-manager", action="store_true", help="Run backup manager without Main Window")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--backup-tool", action="store_true", help="Run backup tool without Main Window")
+    group.add_argument("--series-tool", action="store_true", help="Run series tool without Main Window")
     parser.add_argument("input", help="Path to the input files", nargs="*", action="append", default=[])
     args = parser.parse_args()
 
@@ -90,7 +95,7 @@ def main():
 
     logging.info("Trimmer. Version: %s", __version__)
 
-    return run_gui(args.backup_manager, args.input)
+    return run_gui(args.backup_tool, args.series_tool, args.input)
 
 if __name__ == '__main__':
     exit(main())
