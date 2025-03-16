@@ -19,6 +19,7 @@ class FilterDialog(QtWidgets.QDialog):
 
     def accept(self):
         self.filters = [self.filter_list.item(i).text() for i in range(self.filter_list.count())]
+        self.negative_logic = self.negative_logic.isChecked()
         super().accept()
 
     def __init__(self, icon: QIcon, title: str):
@@ -48,6 +49,9 @@ class FilterDialog(QtWidgets.QDialog):
         remove_button = QtWidgets.QPushButton('Remove')
         remove_button.clicked.connect(lambda: self.filter_list.takeItem(self.filter_list.currentRow()))
         layout.addWidget(remove_button)
+
+        self.negative_logic = QtWidgets.QCheckBox('Negative logic')
+        layout.addWidget(self.negative_logic)
 
         dialog_buttons = QtWidgets.QDialogButtonBox()
         dialog_buttons.setStandardButtons(QtWidgets.QDialogButtonBox.Cancel | QtWidgets.QDialogButtonBox.Ok)

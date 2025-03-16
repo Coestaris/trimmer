@@ -11,7 +11,7 @@ from PyQt5.QtGui import QPixmap, QPainter, QColor, QIcon
 
 ADD_DIRECTORY_REC_ICON = "icons/folder-directory.svg"
 RESTORE_ICON = "icons/time-past.svg"
-BACKUP_MANAGER_ICON = "icons/copy-alt.svg"
+BACKUP_TOOL_ICON = "icons/copy-alt.svg"
 KEEP_ALL_ICON = "icons/border-all.svg"
 KEEP_NONE_ICON = "icons/border-none.svg"
 REMOVE_ALL_ICON = "icons/cross-circle.svg"
@@ -26,6 +26,10 @@ BATCH_ENCODING_OPTIONS_ICON = "icons/settings.svg"
 APP_ICON = "icons/scissors.svg"
 RESTORE_ALL_ICON = "icons/trash-restore.svg"
 BATCH_TITLE_TOOL_ICON = "icons/id-card-clip-alt.svg"
+SERIES_RENAME_TOOL_ICON = "icons/table-rows.svg"
+UNDO_ICON = "icons/undo-alt.svg"
+TEXT_ICON = "icons/text-box-edit.svg"
+REGEX_ICON = "icons/medical-star.svg"
 
 def render_svg(icon: str, size: int, color: str) -> QtGui.QIcon:
     img = QPixmap(icon)
