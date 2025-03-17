@@ -47,19 +47,20 @@ class IncludeRegexToolDialog(QtWidgets.QDialog):
 
             match = r.search(title)
 
-            if index >= len(series_list) and replacement.find('%s') != -1:
-                return "<invalid series index>"
+            if replacement.find('%s') != -1:
+                if index >= len(series_list):
+                    return "<invalid series index>"
+                r = replacement.replace('%s', series_list[index])
+            else:
+                r = replacement
 
             if match:
                 print(match.groups())
 
-            r = (replacement
-                    .replace('%%', '%')
-                    .replace('%i', str(index))
-                    .replace('%t', title)
-                    .replace('%0', match.group(0) if match else '')
-                    .replace('%s', series_list[index])
-                 )
+            r = (r.replace('%%', '%')
+                  .replace('%i', str(index))
+                  .replace('%t', title)
+                  .replace('%0', match.group(0) if match else ''))
 
             if match:
                 for i in range(1, 10):
@@ -296,6 +297,7 @@ class SeriesTool(QtWidgets.QDialog):
                     self.open_directory(url.toLocalFile(), True)
                 else:
                     self.open_file(url.toLocalFile())
+                self.update_files_table()
 
     def add_files(self):
         dialog = QtWidgets.QFileDialog()
