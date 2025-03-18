@@ -626,8 +626,11 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.eta.reset(time.time(), 0)
 
             def update_progress(self, frame: int):
-                self.completed_percent = frame / self.total_frames * 100
-                self.eta.feed(self.completed_percent)
+                if self.total_frames:
+                    self.completed_percent = frame / self.total_frames * 100
+                    self.eta.feed(self.completed_percent)
+                else:
+                    self.completed_percent = 0
                 self.update_time = time.time()
 
         file_statuses = [
@@ -680,9 +683,17 @@ class MainWindow(QtWidgets.QMainWindow):
             self.current_progress_simple_label.setText(
                 f'{os.path.basename(status.file.file)} - {status.completed_percent:.2f}%'
             )
+            if status.file.fps != 0:
+                fps_line = f'FPS: {fps:.2f} ({fps / status.file.fps:.2f}x of realtime). '
+            else:
+                fps_line = ''
+            if status.total_frames != 0:
+                frames_time = f'{frame}/{status.total_frames} frames processed. '
+            else:
+                frames_time = f'{frame} frames processed. '
+
             self.current_progress_label.setText(
-                f'FPS: {fps:.2f} ({fps / status.file.fps:.2f}x of realtime). ' 
-                f'{frame}/{status.total_frames} frames processed. '
+                fps_line + frames_time +
                 f'Time elapsed: {pretty_duration(time.time() - status.start_time)}. '
                 f'ETA: {pretty_duration(status.eta.get())}'
             )
