@@ -205,8 +205,10 @@ class Container:
 
         self.__metadata = get_container_metadata(ffprobe, self.file)
         if self.__metadata.is_err():
-            return Err(f"Unable to get container metadata: {self.__metadata.unwrap_err()}")
-        self.__metadata = self.__metadata.unwrap()
+            logging.warning(f"Unable to get container metadata: {self.__metadata.unwrap_err()}")
+            self.__metadata = {}
+        else:
+            self.__metadata = self.__metadata.unwrap()
         self.__metadata['TRIMMER_VERSION'] = self.__get_signature()
         logger.debug('Metadata: %s', self.__metadata)
 
