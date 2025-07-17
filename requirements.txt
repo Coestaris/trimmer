@@ -2,3 +2,4 @@ wmi; sys_platform == 'win32'
 PyQt5
 result
 natsort
+alive-progress
