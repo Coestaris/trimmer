@@ -47,6 +47,7 @@ SUPPORTED_CONTAINERS = [
     ContainerType('mp4', 'MPEG-4 Video File'),
     ContainerType('mov', 'QuickTime Movie'),
     ContainerType('m2ts', 'Blu-ray BDAV Video File'),
+    ContainerType('ts', 'Blu-ray BDAV Video File'),
 ]
 
 PREFERRED_CONTAINER = SUPPORTED_CONTAINERS[0]
