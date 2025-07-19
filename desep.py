@@ -25,7 +25,7 @@
 import logging
 import os
 import re
-from typing import Optional, Callable
+from typing import Optional, Callable, List
 
 from PyQt5 import QtWidgets
 from alive_progress import alive_bar
@@ -88,7 +88,7 @@ class VideoTrack(Track):
 
 
 class SubtitleTrack(Track):
-    EXTENSIONS = ['srt', 'ass', 'vtt', 'scc', 'sub']
+    EXTENSIONS = ['mks', 'srt', 'ass', 'vtt', 'scc', 'sub']
 
     def __init__(self, path: str, group_name: str, name: Optional[str] = None,
                  language: Optional[str] = None):
@@ -116,14 +116,9 @@ class AudioTrack(Track):
 
 
 class DeSep:
-    def __init__(self, videos_folder: Optional[str] = None,
-                 audio_folder: Optional[str] = None,
-                 subtitles_folder: Optional[str] = None,
-                 output_folder: Optional[str] = None):
-        self.videos_folder = videos_folder
-        self.audio_folder = audio_folder
-        self.subtitles_folder = subtitles_folder
-        self.output_folder = output_folder
+    def __init__(self, folders: List[str], output_dir: Optional[str] = None):
+        self.folders = folders
+        self.output_folder = output_dir or "."
 
     @staticmethod
     def list_files(folder: str) -> list:
@@ -236,18 +231,16 @@ class DeSep:
 
     def run(self,
             callback: Optional[Callable[[str, float], None]] = None) -> None:
-        if not self.videos_folder or not self.audio_folder or not self.subtitles_folder or not self.output_folder:
-            raise ValueError(
-                "Videos, audio, and subtitles folders must be specified.")
 
-        logging.info("Videos folder: %s", self.videos_folder)
-        logging.info("Audio folder: %s", self.audio_folder)
-        logging.info("Subtitles folder: %s", self.subtitles_folder)
-        logging.info("Output folder: %s", self.output_folder)
+        files = []
+        for folder in self.folders:
+            if not os.path.exists(folder):
+                raise ValueError(f"Folder {folder} does not exist.")
+            if not os.path.isdir(folder):
+                raise ValueError(f"{folder} exists but is not a directory.")
+            files.extend(self.list_files(folder))
 
-        videos = self.list_files(self.videos_folder)
-        audios = self.list_files(self.audio_folder)
-        subtitles = self.list_files(self.subtitles_folder)
+        logging.debug("Found %d files in folders: %s", len(files), self.folders)
 
         logging.debug("Ensuring output folder exists")
         self.ensure_folder(self.output_folder)
@@ -266,7 +259,9 @@ class DeSep:
                 return match.group(1).strip()
             return None
 
-        tracks  = [Track.track_factory(t, name_extractor, lang_extractor) for t in (videos + audios + subtitles) if t is not None]
+        tracks = [Track.track_factory(t, name_extractor, lang_extractor) for t in files if t is not None]
+        # Drop nones
+        tracks = [t for t in tracks if t is not None]
 
         # Group tracks by their group name
         groups = {}
@@ -277,6 +272,10 @@ class DeSep:
 
         topology = None
         for gn, group_tracks in groups.items():
+            logging.debug("Group '%s'", gn)
+            for track in group_tracks:
+                logging.debug("  > %s", track)
+
             if topology is None:
                 topology = [track.__class__.__name__ for track in group_tracks]
             else:
@@ -286,13 +285,10 @@ class DeSep:
                         "Inconsistent track topology at group '%s' detected. Expected: %s, got: %s" %
                         (gn, topology, current_topology))
 
-            logging.debug("Group '%s'", gn)
-            for track in group_tracks:
-                logging.debug("  > %s", track)
 
         for i, (gn, group_tracks) in enumerate(groups.items()):
             args = self.build_ffmpeg_cmd(gn, group_tracks, self.output_folder)
-            logging.info("Processing group '%s' (%d/%d)", gn, i + 1, len(groups))
+            logging.debug("Processing group '%s' (%d/%d)", gn, i + 1, len(groups))
             if callback:
                 callback(gn, i / len(groups))
 
@@ -353,38 +349,23 @@ def setup_logging(args):
 
 def run_gui() -> int:
     class MainWindow(QtWidgets.QMainWindow):
-        def select_folder(self, title: str) -> Optional[str]:
+        def select_folder(self, title: str, multiple: bool) -> List[str]:
             if hasattr(self, 'prev_directory'):
                 prev_dir = self.prev_directory
             else:
                 prev_dir = os.path.expanduser("~")
 
-            folder = QtWidgets.QFileDialog.getExistingDirectory(self, title,
-                                                                prev_dir)
+            folder = QtWidgets.QFileDialog.getExistingDirectory(
+                self, title, prev_dir, QtWidgets.QFileDialog.ShowDirsOnly)
+
             if not folder:
                 logging.error("No folder selected for %s", title)
-                return None
+                return []
 
-            self.prev_directory = folder  # Save the selected folder for next time
-            return folder
+            self.prev_directory = folder
 
-        def spawn_folder_enter(self, title: str) -> QtWidgets.QWidget:
-            widget = QtWidgets.QWidget()
-            layout = QtWidgets.QHBoxLayout(widget)
-
-            layout.addWidget(QtWidgets.QLabel(f"{title} folder:"))
-            line_edit = QtWidgets.QLineEdit()
-            line_edit.textChanged.connect(
-                lambda text, t=title: setattr(self.desep, f"{t.lower()}_folder",
-                                              text))
-            layout.addWidget(line_edit)
-            button = QtWidgets.QPushButton("...")
-            button.clicked.connect(
-                lambda _, t=title: line_edit.setText(
-                    self.select_folder(t) or ""))
-            layout.addWidget(button)
-
-            return widget
+            logging.info("Selected folder for %s: %s", title, folder)
+            return [folder]
 
         def start_de_separation(self):
             logging.info("Starting de-separation process")
@@ -398,12 +379,13 @@ def run_gui() -> int:
 
             args = [
                 "python", shell_escape(os.path.basename(__file__)),
-                "--videos", shell_escape(self.desep.videos_folder),
-                "--audio", shell_escape(self.desep.audio_folder),
-                "--subtitles", shell_escape(self.desep.subtitles_folder),
                 "--output", shell_escape(self.desep.output_folder),
                 "--no-gui"
             ]
+            for folder in self.desep.folders:
+                args.append("--folders")
+                args.append(shell_escape(folder))
+
             logging.info(" ".join(args))
             self.progress_bar.setValue(0)
 
@@ -412,29 +394,54 @@ def run_gui() -> int:
                 self.progress_bar.setFormat(
                     f"Processing {file}... {int(progress * 100)}%")
 
-            try:
+            def run():
                 self.desep.run(callback=update_progress)
-                logging.info("De-separation completed successfully")
-                QtWidgets.QMessageBox.information(self, "Success",
-                                                  "De-separation completed successfully.")
-            except Exception as e:
-                logging.error("Error during de-separation: %s", e)
-                QtWidgets.QMessageBox.critical(self, "Error",
-                                               f"An error occurred: {e}")
+
+            # Run the de-separation process in a separate thread
+            from threading import Thread
+            thread = Thread(target=run)
+            thread.start()
 
         def __init__(self):
             super().__init__()
-            self.desep = DeSep()
+            self.desep = DeSep([], "output")
             self.setWindowTitle("DeSep MKV De-separator")
-            self.setFixedSize(400, 300)
+            self.setGeometry(0, 0, 400, 300)
             main_widget = QtWidgets.QWidget()
             main_layout = QtWidgets.QVBoxLayout(main_widget)
             self.setCentralWidget(main_widget)
 
-            main_layout.addWidget(self.spawn_folder_enter("Videos"))
-            main_layout.addWidget(self.spawn_folder_enter("Audio"))
-            main_layout.addWidget(self.spawn_folder_enter("Subtitles"))
-            main_layout.addWidget(self.spawn_folder_enter("Output"))
+            output_folder_widget = QtWidgets.QWidget()
+            output_layout = QtWidgets.QHBoxLayout(output_folder_widget)
+            output_layout.setContentsMargins(0, 0, 0, 0)
+            output_label = QtWidgets.QLabel("Output Folder:")
+            output_edit = QtWidgets.QLineEdit(self.desep.output_folder)
+            output_edit.setReadOnly(True)
+            output_edit.textEdited.connect(lambda text: setattr(self.desep, 'output_folder', text))
+            output_button = QtWidgets.QPushButton("...")
+            output_button.setFixedWidth(30)
+            def select_output_folder():
+                folder = self.select_folder("Select Output Folder", False)
+                if folder:
+                    output_edit.setText(folder[0])
+                    self.desep.output_folder = folder[0]
+            output_button.clicked.connect(select_output_folder)
+            output_layout.addWidget(output_label)
+            output_layout.addWidget(output_edit)
+            output_layout.addWidget(output_button)
+            main_layout.addWidget(output_folder_widget)
+
+            list_widget = QtWidgets.QListWidget()
+            main_layout.addWidget(list_widget)
+            add_button = QtWidgets.QPushButton("Add")
+            def add_folders():
+                folders = self.select_folder("Select Folders", True)
+                if folders:
+                    for folder in folders:
+                        list_widget.addItem(folder)
+                        self.desep.folders.append(folder)
+            add_button.clicked.connect(add_folders)
+            main_layout.addWidget(add_button)
 
             button = QtWidgets.QPushButton("Start De-separation")
             button.clicked.connect(self.start_de_separation)
@@ -465,34 +472,38 @@ def main() -> int:
                         help="Disable colored output")
     parser.add_argument("--no-gui", action="store_true",
                         help="Run in command line mode without GUI")
-    parser.add_argument("--videos", type=str,
-                        help="Path to the folder with video files (used in GUI mode only)")
-    parser.add_argument("--audio", type=str,
-                        help="Path to the folder with audio files (used in GUI mode only)")
-    parser.add_argument("--subtitles", type=str,
-                        help="Path to the folder with subtitle files (used in GUI mode only)")
-    parser.add_argument("--output", type=str,
-                        help="Path to the output folder (used in GUI mode only)")
+    parser.add_argument("-f", "--folders", default=[], nargs='*', action="append",
+                        help="Folders to process. If not specified, will prompt for folders.")
+    parser.add_argument("-o", "--output", type=str, default="output",
+                        help="Output folder for processed files")
 
     args = parser.parse_args()
     setup_logging(args)
+
+    print(args)
 
     logging.info("Running DeSep script")
 
     if args.no_gui:
         logging.info("Running in command line mode")
-        if not args.videos or not args.audio or not args.subtitles:
-            print(
-                "Please specify the folders for videos, audio, and subtitles.")
+        if not args.folders or not args.folders[0]:
+            logging.error("No folders specified. Use --folders to specify folders or run without --no-gui to use GUI.")
             return 1
 
-        desep = DeSep(videos_folder=args.videos, audio_folder=args.audio,
-                      subtitles_folder=args.subtitles,
-                      output_folder=args.output)
-        with alive_bar(title="De-separating MKV containers",
-                       bar="smooth") as bar:
-            desep.run(callback=lambda file, progress: bar.text(
-                f"Processing {file}...") or bar())
+        folders = [f for sublist in args.folders for f in sublist]
+        desep = DeSep(folders, args.output)
+
+        bar = None
+        def update_progress(file: str, progress: float):
+            nonlocal bar
+            if bar is None:
+                bar = alive_bar(1, title="Processing files", manual=True)
+            bar(progress)
+            if progress >= 1.0:
+                bar.stop()
+                bar = None
+        desep.run(callback=update_progress)
+
     else:
         logging.info("Running GUI mode")
         return run_gui()

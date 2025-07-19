@@ -337,7 +337,8 @@ class SeriesTool(QtWidgets.QDialog):
                 os.rename(in_file, out_file)
                 file.file = out_file
             except Exception as e:
-                logger.error('Failed to process %s -> %s: %s', in_file, out_file, e)
+                logger.error('Failed to process %s -> %s: %s', in_file, out_file)
+                logger.exception(e)
 
         self.history = []
         self.update_files_table()
